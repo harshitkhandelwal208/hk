@@ -277,7 +277,7 @@ pub const HKWriter = struct {
 };
 
 fn writeZeroPad(file: anytype, io: anytype, pad_len: usize) !void {
-    const ZERO_PAD: [4096]u8 = [_]u8{0} ** 4096;
+    const ZERO_PAD: [4096]u8 = @as([4096]u8, @splat(0));
     var rem = pad_len;
     while (rem > 0) {
         const chunk = @min(rem, ZERO_PAD.len);

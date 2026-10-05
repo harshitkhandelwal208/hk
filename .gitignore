@@ -19,6 +19,8 @@ bindings/rust/Cargo.lock
 # C# / .NET Bindings
 bindings/csharp/bin/
 bindings/csharp/obj/
+bindings/csharp/tests/bin/
+bindings/csharp/tests/obj/
 
 # Java Bindings
 *.class
@@ -55,3 +57,6 @@ Thumbs.db
 *.lib
 *.a
 *.exe
+
+# Fixtures written by the binding tests
+test_*.hk

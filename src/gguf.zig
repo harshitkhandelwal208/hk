@@ -350,7 +350,7 @@ pub const GGUFReader = struct {
 
             if (n_dims > format.MAX_DIMS) return error.TooManyDimensions;
 
-            var dims = [_]u64{0} ** format.MAX_DIMS;
+            var dims = @as([format.MAX_DIMS]u64, @splat(0));
             for (0..n_dims) |d| {
                 if (cursor + 8 > bytes.len) return error.UnexpectedEof;
                 dims[d] = std.mem.readInt(u64, bytes[cursor..][0..8], .little);
@@ -464,7 +464,7 @@ pub fn convertGGUFToHK(input_path: []const u8, output_path: []const u8, allocato
         // In GGUF, dimensions are innermost-first: [ne0, ne1, ne2, ne3].
         // In HK, dimensions are C row-major: [dim0, dim1, dim2, dim3].
         // Reverse them so dim0 corresponds to batch/outer dimension.
-        var hk_shape = [_]u64{0} ** format.MAX_DIMS;
+        var hk_shape = @as([format.MAX_DIMS]u64, @splat(0));
         const ndim: u8 = @intCast(t.n_dimensions);
         for (0..ndim) |i| {
             hk_shape[i] = t.dimensions[ndim - 1 - i];
@@ -583,7 +583,7 @@ pub fn exportHKToGGUF(input_hk_path: []const u8, output_gguf_path: []const u8, a
 
     // Write initial padding
     if (initial_padding > 0) {
-        const pad = [_]u8{0} ** 32;
+        const pad = @as([32]u8, @splat(0));
         try file.writeStreamingAll(io, pad[0..initial_padding]);
     }
 
@@ -596,7 +596,7 @@ pub fn exportHKToGGUF(input_hk_path: []const u8, output_gguf_path: []const u8, a
         const rem = t.data_size % 32;
         if (rem != 0) {
             const pad_len = 32 - rem;
-            const pad = [_]u8{0} ** 32;
+            const pad = @as([32]u8, @splat(0));
             try file.writeStreamingAll(io, pad[0..pad_len]);
         }
     }

@@ -1,142 +1,79 @@
 # Python API Reference
 
-In this document, I provide a comprehensive reference for the primary Python modules, classes, and functions in the `hk` package (`hknt` on PyPI).
+> **Status:** the Python package (`hknt` on PyPI as named in `pyproject.toml`, import name `hk`, source in `python/hk/`) is a **companion layer** around the same container format and, when available, the compiled Zig library. The fast inference path is the Zig CLI/server (`hk run`, `hk serve`); the Python side is for converting, inspecting and editing `.hk` files, small-model experiments and training research.
+>
+> Requirements: Python ≥ 3.9, `torch`, `numpy`. Native functions need the shared library built by `zig build -Doptimize=ReleaseFast` (searched for next to the package or in `HK_LIB_DIR`; `hk.is_native_available()` tells you). Without it, some features fall back to Python or raise `RuntimeError`. CI installs the package and runs the Python tests on Linux/macOS/Windows with Python 3.10–3.12; the reference below was written from the source, and the Python suite was not re-run on the machine used for the Zig work.
+>
+> The Python HTTP/CLI test scripts were replaced by Zig tests (`zig build test-e2e`); the Python package keeps its own pytest suite for the library code.
 
 ---
 
-## 1. Top-Level Package (`hk`)
+## 1. Top level (`hk`)
 
-### `AutoModelForCausalLM`
-Factory class for loading causal language models from `.hk` containers.
-- `from_pretrained(pretrained_model_name_or_path, torch_dtype="bfloat16", **kwargs) -> HKForCausalLM`: Loads model using zero-copy memory-mapped tensors.
+### Models and config
+- `HKConfig` / `AutoConfig`: hyperparameters (`vocab_size`, `hidden_size`, `intermediate_size`, `num_hidden_layers`, `num_attention_heads`, ...). `from_pretrained(path)` reads them from `.hk` metadata; `save_pretrained(dir)` writes a config.
+- `HKForCausalLM(config)`: **HK's own** small transformer: token embedding, multi-head attention (no GQA, no RoPE), `LayerNorm`, GELU MLP (`mlp_fc1`, `mlp_fc2`), optional tied embeddings. It is not an adapter for Llama/Qwen/Mistral checkpoints.
+  - `from_pretrained(path, config=None, device="cpu", torch_dtype=None, device_map=None)` loads `.hk` or `.safetensors` whose tensor names match this architecture. `device_map="auto"` plans CPU/GPU placement per layer from free memory.
+  - `forward(input_ids, attention_mask=None, labels=None) -> ModelOutput` (`.logits`, `.loss`).
+  - `generate(input_ids, max_new_tokens=20, temperature=1.0, top_k=50)`: **greedy** decoding (it takes the argmax; temperature/top-k do not introduce sampling). For a single sequence on CPU from a `.hk` file it first tries the native engine (`NativeHKEngine`) and silently falls back to PyTorch on any error. Use the CLI for real sampling.
+  - `save_pretrained(path, alignment=...)`, `grow_width(layer, new_size, noise_std)`, `enable_qlora(rank, alpha, ...)`, `enable_continual_learning(protect_base=True)`.
+- `AutoModel` (aliases `AutoModelForCausalLM`, `AutoModelForSequenceClassification`): picks the class from the config. Same architecture limits as above.
+- Other heads/pipelines: `HKForSequenceClassification`, `HKForHandwritingRecognition`, `pipeline(...)`, `UniversalPipeline`/`CompositePipeline` (`composite.py`).
 
-### `AutoTokenizer`
-Factory class for tokenizers embedded in `.hk` containers.
-- `from_pretrained(pretrained_model_name_or_path, **kwargs) -> HKTokenizer`: Loads tokenizer vocabulary, merge rules, and special token mappings.
+### Tokenizers
+- `HKTokenizer`, `AutoTokenizer.from_pretrained(path)`: tokenizer built from the `.hk` metadata (pure-Python implementation).
+- `NativeHKTokenizer`: wrapper over the Zig tokenizer (`hk_tokenizer_*` C functions), same one the engine uses.
 
-### `AutoConfig` / `HKConfig`
-Model architecture hyperparameter configuration.
-- Fields: `model_type`, `vocab_size`, `hidden_size`, `intermediate_size`, `num_hidden_layers`, `num_attention_heads`, `num_key_value_heads`, `max_position_embeddings`, `rope_theta`, `rms_norm_eps`.
-- `from_pretrained(path) -> HKConfig`: Reads config dictionary from `.hk` metadata section.
-- `save_pretrained(path)`: Serializes config into metadata section.
+### Native inference
+- `NativeHKEngine(path)`: loads a model into the Zig engine (Llama, Qwen2 and Qwen3 style architectures; same support list as [Compatibility](Compatibility)). `forward(tokens, pos=0) -> np.ndarray` returns the logits after the last token; `forward_step(token, pos)`; `reset_cache()`; `vocab_size`, `context_size`; use as a context manager. Positions are explicit. This gives you logits, not a sampler or chat loop.
 
-### `HKForCausalLM`
-PyTorch `nn.Module` implementation supporting causal language modeling, autoregressive generation, and dynamic capacity expansion.
-- `generate(input_ids, max_new_tokens=128, temperature=0.7, top_p=0.9, top_k=40, repetition_penalty=1.1, do_sample=True, **kwargs) -> torch.Tensor`: Autoregressive token generation loop.
-- `save_pretrained(save_directory, metadata=None)`: Saves weights directly into `.hk` container.
-
----
-
-## 2. PyTorch Integration (`hk.torch`)
-
-I designed this as a drop-in replacement for `safetensors.torch` with automatic tied-weight deduplication and memory leak protection.
-
-### Functions
-- `save_file(tensors: Dict[str, torch.Tensor], filename: str, metadata: Optional[Dict[str, str]] = None) -> None`: Serializes dictionary of PyTorch tensors into an `.hk` container. Automatically detects shared `data_ptr` addresses and marks them as `SHARED_REF` without duplicate storage.
-- `load_file(filename: str, device: str = "cpu") -> Dict[str, torch.Tensor]`: Loads all tensors from an `.hk` file using zero-copy memory mapping.
-- `save_model(model: torch.nn.Module, filename: str, metadata: Optional[Dict[str, str]] = None) -> None`: Extracts state dictionary and persists model weights.
-- `load_model(model: torch.nn.Module, filename: str, strict: bool = True) -> None`: Loads `.hk` weights into an existing `nn.Module` instance.
-
-### `safe_open` Class
-Context manager for lazy inspection and partial tensor slicing.
-```python
-with safe_open(filename: str, framework: str = "pt") as f:
-    keys = f.keys()
-    metadata = f.metadata()
-    tensor = f.get_tensor(name: str)
-    slice_obj = f.get_slice(name: str)
-    # Multidimensional slicing without loading full matrix:
-    partial_tensor = slice_obj[0:10, 0:20]
-```
+### Conversion
+- `convert_safetensors_to_hk` (native), `convert_hf_checkpoint`, `HFArchitectureMapper` and helpers in `hf_mapper.py`, `convert_gguf_to_hk` / `export_hk_to_gguf` / `GGUFReaderLight` in `gguf_parser.py`. The Zig CLI (`hk convert-gguf`, `hk convert-safetensors`, `hk export`) is the primary, tested conversion path; see [CLI Reference](CLI-Reference).
 
 ---
 
-## 3. Raw Weight Store (`hk.raw`)
+## 2. Tensor files (`hk.torch`, `hk.numpy`, JAX/Flax)
 
-Zero compute headroom storage and direct SIMD execution.
+A `safetensors`-style API over `.hk` files.
 
-### `HKRawWeightStore`
-- `load_raw(filepath: str) -> HKRawWeightStore`: Maps an `.hk` file directly into user address space.
-- Attributes:
-  - `is_universal_page_aligned`: True if all payloads start on 4KB or 16KB boundaries.
-  - `is_tensor_core_aligned`: True if all payloads start on 128-byte boundaries.
-  - `tensor_names`: List of stored tensor identifiers.
-- Methods:
-  - `gemv(tensor_name: str, x: torch.Tensor) -> torch.Tensor`: Executes direct 4-row unrolled SIMD matrix-vector multiplication $y = W \cdot x$ directly from mapped pages.
-  - `get_tensor(tensor_name: str) -> torch.Tensor`: Returns a zero-copy PyTorch tensor viewing the mapped memory.
-  - `close() -> None`: Safely closes file descriptors and unmaps memory.
+- `save_file(tensors, filename, metadata=None, split_index=0, split_count=1)`: writes tensors; tensors that share a `data_ptr` are stored once as `shared_ref`.
+- `load_file(filename, device="cpu", with_residual=True) -> dict`: loads all tensors, following shards/index manifests automatically; dequantizes quantized tensors to float.
+- `save_model(model, filename, metadata=None)` / `load_model(model, filename, strict=True)`.
+- `save_sharded_file(tensors, filename_pattern, max_shard_size=..., ...)` / `load_sharded_file(...)`: multi-file checkpoints with a `*.hk.index.json` manifest.
+- `safe_open(filename, framework="pt")`: lazy reader (`keys()`, `metadata()`, `get_tensor(name)`, `get_slice(name)`).
+- `metadata_set(filename, key, value)`: in-place metadata edit (same limits as `hk metadata set`, see [Storage and Sparsity](Storage-and-Sparsity)).
+- `hk.remote`: `read_remote_hk_header`, `safe_open_remote` (reads a remote file's header/tensors over HTTP range requests).
 
-### Functions
-- `save_raw(tensors: Dict[str, torch.Tensor], filepath: str, universal_alignment: bool = True) -> None`: Saves unquantized IEEE tensors with 4KB/16KB universal alignment.
-- `save_sharded_raw(tensors: Dict, output_dir: str, max_shard_size_gb: float = 2.0) -> None`: Splits large models across multi-file shards with global manifest index.
-- `load_sharded_raw(index_or_dir: str) -> HKShardedRawStore`: Loads a sharded checkpoint.
+## 3. Raw store (`hk.raw`)
 
----
+- `save_raw(filename, tensors, metadata=None, alignment=4096, split_index=0, split_count=1)`: filename first. Raw (unquantized) storage.
+- `load_raw(filename, as_torch=True, device=None) -> dict` backed by the mapped file.
+- `HKRawWeightStore(path)`: context manager with `keys()`, `__getitem__`, `get_numpy(name)`, `metadata()`, `hardware_profile()`, `gemv(name, x, bias=None)`, and attributes `alignment`, `is_universal_page_aligned`, `is_tensor_core_aligned`, `is_raw_storage`, `is_sharded`.
+- `save_sharded_raw(base_path, shards, metadata=None, alignment=4096)` (shards = list of dicts) / `load_sharded_raw(paths)`.
+- `to_amd_rocm`, `to_intel_npu`, `to_apple_metal`, `to_nvidia_tensor_core`: only return a contiguous array/tensor; no device interaction.
 
-## 4. Dynamic Architecture Growth (`hk.adaptive.growth`)
+See [Raw Storage](Raw-Storage-and-Super-Coalescing).
 
-Functions and classes for runtime capacity expansion.
+## 4. Quantization and pruning (`hk.quantization`, `hk.pruning`)
 
-### `GrowthGovernor`
-Hardware resource manager that evaluates physical RAM and GPU VRAM boundaries in native Zig.
-- `__init__(max_vram_mb: int = 8192, max_ram_mb: Optional[int] = None, max_growth_ratio: float = 2.0)`
-- `can_grow(current_params: int, additional_params: int, dtype_bytes: int = 2) -> Tuple[bool, str]`: Checks whether a proposed parameter expansion is safe to allocate.
+- `quantize_nf4_dual_mode` / `dequantize_nf4_dual_mode`, `quantize_dq8_dual_mode`, `quantize_dqt`, `quantize_q4_k`/`dequantize_q4_k`, `quantize_q8_k`, `dequantize_q6_k`, `dequantize_q2_k`, `ImportanceMatrixCalibrator`, `QUANT_RECIPES`, `resolve_quant_type_for_tensor`.
+- `make_2_4_sparse(tensor, scale_correction=True) -> (tensor, 0.5)`, `pack_2_4(tensor) -> bytes`, `unpack_2_4(bytes, shape)` (the last two need the native library).
+- Pruning of `nn.Module`s: `prune_unstructured_magnitude`, `prune_wanda`, `prune_structured_2_4`, `prune_block_sparse`, `prune_structured_l2`, `fine_tune_recovery`, `LayerSparsitySchedule`.
 
-### Growth Routines
-- `net2wider_swiglu(gate_proj: nn.Linear, up_proj: nn.Linear, down_proj: nn.Linear, new_intermediate_size: int, noise_std: float = 0.0) -> Tuple[nn.Linear, nn.Linear, nn.Linear]`: Widens SwiGLU MLP intermediate dimension with exact Day-0 function preservation ($f_{\text{new}}(x) \equiv f_{\text{old}}(x)$ when `noise_std = 0.0`).
-- `net2wider_linear(linear: nn.Linear, new_out_features: int, noise_std: float = 0.0) -> nn.Linear`: Widens standard linear layers.
-- `expand_vocab(embed_tokens: nn.Embedding, lm_head: nn.Linear, new_vocab_size: int, init_std: float = 0.02) -> Tuple[nn.Embedding, nn.Linear]`: Expands token vocabulary while preserving all existing token embeddings.
+For producing GGUF-style quantized models that the engine can run, prefer the Zig tools or llama.cpp's quantizer; the Python quantizers cover a subset of formats. See [Compatibility](Compatibility).
 
----
+## 5. Training (`hk.trainer`)
 
-## 5. Training Engine (`hk.trainer`)
+`HKTrainingArguments` and `HKTrainer(model, args, train_dataset, eval_dataset, compute_metrics)` with `train()`, `save_model(path)`. Full details and defaults: [Training and Fine-Tuning](Training-and-Fine-Tuning).
 
-### `HKTrainingArguments`
-Dataclass holding all training hyperparameters:
-- `output_dir: str = "./results"`
-- `learning_rate: float = 3e-4`
-- `batch_size: int = 4`
-- `num_train_epochs: int = 3`
-- `use_qlora: bool = False`
-- `lora_rank: int = 8`
-- `lora_alpha: float = 16.0`
-- `enable_adaptive_growth: bool = False`
-- `growth_patience: int = 5`
-- `growth_width_factor: float = 1.25`
-- `protect_base_capacity: bool = True`
+## 6. Adaptive tooling (`hk.adaptive`)
 
-### `HKTrainer`
-Hugging Face-compatible unified training loop:
-- `__init__(model, args: HKTrainingArguments, train_dataset, eval_dataset=None, tokenizer=None)`
-- `train() -> Dict[str, float]`: Runs training, evaluates validation loss, triggers Net2Net expansion on plateaus, and saves in-container checkpoints.
+- Growth: `GrowthGovernor`, `net2wider_linear`, `net2wider_swiglu`, `net2deeper_linear`, `expand_vocab(model, new_vocab_size, init_std)`, `expand_model_width(model, expansion_ratio, ...)`, `protect_base_capacity(model, ...)`. See [Dynamic Architecture Growth](Dynamic-Architecture-Growth).
+- Appendix: `AppendixManager(path)` with `get_records()`, `append_lora_checkpoint(...)`, `rollback(generation)`, `verify()`; module functions `read_appendix`, `append_record`, `rollback_appendix`, `verify_lineage`, `compute_parent_hash`. See [In-Container Version Lineage](In-Container-Version-Lineage).
+- Self-training: `SelfTrainingPipeline`, `SelfTrainingCurriculum`, `SelfConversationalEngine`, `ExpansionEvaluator`, `CodeSandbox`, `SPINLoss`. See [Self-Training Toolkit](Autonomous-Self-Training); note the sandbox is not a security boundary by default.
 
----
+## 7. Misc
 
-## 6. Version Lineage (`hk.adaptive.appendix`)
-
-### `AppendixManager`
-Manages the append-only version DAG embedded at the end of `.hk` files.
-- `__init__(hk_path: str)`
-- `list_records() -> List[AppendixRecord]`: Returns full generational history.
-- `append_record(record_type: int, generation: int, metrics: Dict, payload: bytes) -> str`: Appends a new generation delta record with cryptographic SHA-256 parent hash.
-- `verify_chain_integrity() -> Tuple[bool, str]`: Validates cryptographic hashes across all generations.
-- `rollback_to_generation(target_generation: int) -> bool`: Restores container active state to an earlier generation in sub-milliseconds.
-
----
-
-## 7. Autonomous Self-Training (`hk.adaptive`)
-
-- `SelfTrainingPipeline`: Orchestrates closed-loop self-learning runs.
-- `SelfTrainingCurriculum`: Holds diagnostic and training task definitions.
-- `SelfConversationalEngine`: Manages Proposer/Thinker dialogue and `<think>` reasoning traces.
-- `CodeSandbox`: Secure, AST-screened multiprocess execution sandbox with timeouts.
-- `SelfPlayEngine` / `SPINLoss`: Computes self-play fine-tuning objectives.
-- `ExpansionEvaluator`: Probes error rates to formulate architectural growth plans.
-
----
-
-## 8. Structural Sparsity (`hk.pruning`)
-
-- `prune_to_2_4(weight: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]`: Prunes dense matrix to conform to Ampere 2:4 structured sparsity pattern.
-- `pack_2_4_sparse(weight: torch.Tensor) -> Packed24Tensor`: Packs 2:4 sparse float matrix into contiguous non-zeros and 2-bit nibble index buffers (50% storage reduction).
-- `unpack_2_4_sparse(packed: Packed24Tensor) -> torch.Tensor`: Unpacks 2:4 sparse buffer back into dense tensor with 0.000000 error.
+- `hk.benchmark.benchmark_model` / `compare_models`: timing helpers for PyTorch-side models (not the Zig engine; for engine-vs-llama.cpp comparisons use `zig build hk-compare`, see [Benchmarks and Performance](Benchmarks-and-Performance)).
+- `hk.offload`: `HardwareMemoryInspector`, `DynamicOffloadPlanner`, `AutoDeviceDispatcher`, `DynamicOOMGuard` for placing layers across CPU/GPU memory in PyTorch.
+- `hk.cli` / `hk.gui.launch_gui`: Python entry points; the `hk` console script installed by the wheel points at `hk.cli:main`.

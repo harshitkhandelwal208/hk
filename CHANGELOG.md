@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.1] - 2026-10-05 - Engine rewrite: portable kernels, tiled prefill, Vulkan backend, Zig tooling, verified language bindings
+
+### Engine and performance
+- **Runtime ISA dispatch.** The compute kernels are compiled once per level (x86: AVX-512+VNNI, AVX-VNNI, AVX2, generic; ARM: dotprod, NEON, generic) and selected at startup from detected CPU features. `HK_KERNELS=<level>` overrides the choice. Nothing is tuned to the build machine.
+- **Register-tiled prefill GEMM** for legacy, K-quant, I-quant, ternary, MXFP4 and float formats. Weights stay memory-mapped; each thread repacks its tile on the fly (no second model copy).
+- **Decode**: broadcast f16 scale conversion (removes a false dependency), fused QKV and gate/up regions, physical-core thread count, prefetch hints, a futex-skipping thread pool, split-KV decode attention, segmented f16 KV cache with tiled keys.
+- **Vulkan compute backend** (`-ngl`, `HK_GPU`): whole model on one device, loaded dynamically (no build-time dependency), shaders checked in as SPIR-V. Tested on one NVIDIA GPU only. No Metal, ROCm, CUDA-in-engine or TPU backend.
+- ARM NEON/dotprod kernels compile and pass the portable tests; they have not been run on ARM hardware.
+
+### Tooling moved from Python to Zig
+- Benchmark comparison (`hk-compare`), kernel microbenchmark (`hk-kernels`), tiny-model generator (`hk-tiny-model`), Unicode table generator, and the CLI/server/Hub test suites (`zig build test-e2e`, mock Hub and HTTP server in Zig). The Python `hk` command now just runs the native executable.
+- New: `hk export` (safetensors), `hk hardware-profile` rewritten, `-ngl` flags.
+
+### Language bindings
+- New `tests/bindings/run.sh` (and a CI job running it): builds libhk, writes a fixture through the C ABI, and tests the C ABI, C++, Rust, Go, C#, Java and TypeScript bindings against it, including each writer, `metadata set`, and the C engine/tokenizer/sampler on a tiny model.
+- **Java** had `native` methods with no implementation anywhere; added the JNI glue (`bindings/java/jni/hk_jni.c`, built with `zig build jni -Djdk=<dir>`).
+- **Rust** crate now links libhk through `build.rs` (`HK_LIB_DIR`); `AppendixEntry` carries the payload.
+- **Go** links `zig-out/lib` (was `zig-out/bin`) and exposes the appendix payload.
+- **TypeScript**: the package is now a real ES module (it was CommonJS inside a `"type": "module"` package, so `import` failed), appendix records are read with their 8-byte padding, Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/f16 decode, and unsupported storage types throw instead of returning zeros.
+- **C#** exposes the appendix payload; `include/hk.h` and `include/hk.hpp` list every storage type (Q4_1, Q5_0, Q5_1, Q8_1, IQ2_S, IQ3_S were missing) and every exported function. `hk_layernorm_offset` in the header is now `hk_layernorm_offset_f32`, the name that is actually exported. A string literal passed to `hk::Writer::add_metadata` no longer selects the bool overload.
+- All bindings recognize the full storage-type list.
+
+### Fixes
+- `hk_appendix_get_entry` returned `name` and `target` as C strings that were not NUL terminated (they pointed into the length-prefixed records), so every binding read garbage. They are now NUL-terminated copies.
+- `hk_dequantize_f32` / `HKReader.dequantizeToF32` failed for Q4_1, Q5_0, Q5_1, Q8_1, the I-quants, IQ4_XS and the ternary types; they now use the engine's decoders.
+- `hk metadata set` / `hk_metadata_patch_in_place` corrupted the file when the new metadata was longer but still fit in the alignment padding (the TOC was read through the mapping that the metadata was being written over). Covered by a new test.
+- YaRN RoPE blend was inverted.
+- `hk expand` wrote unexpanded f16/bf16 tensors as f32 bytes under their old type; it now stores them as f32. JSON metadata is now preserved.
+- `hk metadata set` no longer appends metadata after an existing appendix (which corrupted the appendix); it reports an error instead.
+- Head dimension validation in config.
+
+### Documentation
+- Wiki and README rewritten against the code. Overstated claims (zero-overhead GPU alignment, 2:4 hardware speedups, secure sandbox, SDK inference examples, unmeasured benchmark tables) removed or corrected; benchmark numbers now come from `hk-compare` with conditions stated.
+- Minimum Zig version is 0.16.0.
+
 ## [1.1.0] - 2026-09-21 - Native SIMD Kernel Optimizations, Zero-Skip GEMM, RoPE Angle Caching & Quantization LUT
 
 ### Performance & Kernel Optimizations

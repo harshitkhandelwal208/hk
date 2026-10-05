@@ -103,10 +103,8 @@ pub fn detectHardwareCapabilities() HardwareCapabilities {
 
             if (std.mem.eql(u8, &vendor_str, "GenuineIntel")) {
                 caps.vendor = .intel;
-                caps.has_npu_ready = true; // Intel OpenVINO / NPU ready
             } else if (std.mem.eql(u8, &vendor_str, "AuthenticAMD")) {
                 caps.vendor = .amd;
-                caps.has_rocm_ready = true; // AMD ROCm / Ryzen AI ready
             }
 
             const info1 = cpuidSafe(1, 0);
@@ -228,7 +226,7 @@ pub fn mapOrReadFile(path: []const u8, allocator: std.mem.Allocator) !MmapRegion
             extern "kernel32" fn CloseHandle(hObject: std.os.windows.HANDLE) callconv(.winapi) i32;
         };
 
-        const path_z = allocator.dupeZ(u8, path) catch null;
+        const path_z = allocator.dupeSentinel(u8, path, 0) catch null;
         if (path_z) |pz| {
             defer allocator.free(pz);
             // GENERIC_READ = 0x80000000, FILE_SHARE_READ = 1, FILE_SHARE_WRITE = 2, OPEN_EXISTING = 3, FILE_ATTRIBUTE_NORMAL = 0x80
@@ -355,7 +353,7 @@ pub fn writeBytesAtOffset(path: []const u8, data: []const u8, offset: u64, alloc
             extern "kernel32" fn CloseHandle(hObject: std.os.windows.HANDLE) callconv(.winapi) i32;
         };
 
-        const path_z = try allocator.dupeZ(u8, path);
+        const path_z = try allocator.dupeSentinel(u8, path, 0);
         defer allocator.free(path_z);
 
         const handle = win.CreateFileA(path_z.ptr, 0x40000000 | 0x80000000, 1 | 2, null, 3, 0x80, null);
@@ -408,7 +406,7 @@ pub fn truncateFile(path: []const u8, new_size: u64, allocator: std.mem.Allocato
             extern "kernel32" fn CloseHandle(hObject: std.os.windows.HANDLE) callconv(.winapi) i32;
         };
 
-        const path_z = try allocator.dupeZ(u8, path);
+        const path_z = try allocator.dupeSentinel(u8, path, 0);
         defer allocator.free(path_z);
 
         const handle = win.CreateFileA(path_z.ptr, 0x40000000 | 0x80000000, 1 | 2, null, 3, 0x80, null);

@@ -1,72 +1,59 @@
-# @hk-format/core (HK TypeScript / JavaScript SDK)
+# hkntf: TypeScript / JavaScript reader and writer for `.hk` files
 
-Zero-dependency TypeScript & JavaScript SDK for the **HK Neural Tensor Framework**.  
-Provides fast container reading, memory-mapped tensor access, GGUF/Safetensors compatibility, and browser/Node.js/WASM runtime support.
+A dependency-free ES module that parses and builds HK model containers in Node.js, browsers and web workers. It is a **container** library: it reads tensors, metadata and the appendix, and writes new files. It does not run models.
 
----
+The whole file is read into an `ArrayBuffer` (no memory mapping), so it suits headers, metadata, small models and tooling rather than multi-gigabyte weights.
 
-## Features
-
-- **Non-Quantized Storage Efficiency**: Direct memory-mapped zero-copy access to FP32, FP16, BF16, and FP8 unquantized tensors with zero deserialization overhead.
-- **Zero-Dependency**: Reads `.hk` containers directly in browser, Web Worker, or Node.js without native binary dependencies.
-- **Minimal Container Overhead**: Fixed 128-byte header and binary TOC inspection in sub-milliseconds.
-- **Comprehensive Quantization Support**: Full support for quantized models (Q4_0, Q8_0, K-quants, I-quants) for edge and mobile execution.
-- **Typed & Pure**: Full TypeScript typings (`.d.ts`), tree-shakeable, and ESM/CJS compatible.
-
----
-
-## Installation
+## Install
 
 ```bash
-npm install @hk-format/core
-# or
-yarn add @hk-format/core
-# or
-pnpm add @hk-format/core
+npm install hkntf
 ```
 
----
-
-## Usage
-
-### In Node.js / Server-side
+## Read a file
 
 ```typescript
-import * as fs from "node:fs";
-import { HkModel, StorageType } from "@hk-format/core";
+import { readFileSync } from "node:fs";
+import { HkModel, StorageType } from "hkntf";
 
-// Read a local .hk container file
-const buffer = fs.readFileSync("model.hk");
-const model = HkModel.fromArrayBuffer(buffer.buffer);
+const buf = readFileSync("model.hk");
+const model = HkModel.fromArrayBuffer(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
 
-// Inspect metadata
-console.log("Model Architecture:", model.getMetadata("general.architecture"));
-console.log("All Metadata:", model.getAllMetadata());
-
-// List all tensors
-for (const tensor of model.listTensors()) {
-  console.log(`Tensor: ${tensor.name}, Shape: [${tensor.shape}], Type: ${StorageType[tensor.storageType]}`);
+console.log(model.metadata.get("general.architecture"));
+for (const [name, t] of model.tensors) {
+  console.log(name, t.shape, StorageType[t.storageType]);
 }
 
-// Extract a tensor's raw binary data
-const weightBytes = model.getTensorBytes("layers.0.feed_forward.w1.weight");
+const entry = model.getTensor("token_embd.weight");
+if (entry) {
+  const values = model.dequantizeToF32(entry);   // Float32Array
+  const raw = model.getRawTensorBytes(entry);    // Uint8Array view, no copy
+}
 ```
 
-### In Browser / Web Workers
+In a browser use `await HkModel.loadFromUrl(url)`.
+
+`dequantizeToF32` decodes f32, f16, bf16, the integer types, NF4, and the GGUF block formats Q4_0, Q4_1, Q5_0, Q5_1 and Q8_0. Any other storage type (K-quants, I-quants, ternary, MXFP4, sparse formats) **throws**; use the native library for those.
+
+Other members: `model.appendixEntries`, `model.alignment`, `model.isSharded`, `model.splitIndex`, `model.splitCount`, `model.patchMetadataInPlace(key, value)`.
+
+## Write a file
 
 ```typescript
-import { HkModel } from "@hk-format/core";
+import { HkWriter, StorageType, TileLayout, SparsityType } from "hkntf";
 
-// Fetch container header via HTTP range request
-const response = await fetch("https://huggingface.co/org/model/resolve/main/model.hk");
-const arrayBuffer = await response.arrayBuffer();
-
-const model = HkModel.fromArrayBuffer(arrayBuffer);
-console.log("Loaded model with tensors:", model.tensorNames);
+const w = new HkWriter(4096);                       // payload alignment in bytes
+w.addMetadataString("general.name", "demo");
+w.addMetadataInt("answer", 42);
+w.addTensor("w", StorageType.F32, TileLayout.RowMajor, SparsityType.None, [2],
+            new Uint8Array(new Float32Array([1.5, 2.5]).buffer));
+const bytes: Uint8Array = w.build();
 ```
 
----
+## Tests
+
+`npm test` builds the package and runs `test/test.mjs`, which needs a fixture written by `tests/bindings/c_abi.c`; from the repository root `tests/bindings/run.sh` does all of that.
 
 ## License
 
-Apache-2.0 © HK AI Research Team
+Apache-2.0

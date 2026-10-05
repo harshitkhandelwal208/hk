@@ -2,7 +2,9 @@ package hk
 
 /*
 #cgo CFLAGS: -I../../../include
-#cgo LDFLAGS: -L../../../zig-out/bin -lhk
+#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -lhk
+#cgo linux LDFLAGS: -Wl,-rpath,${SRCDIR}/../../../zig-out/lib
+#cgo darwin LDFLAGS: -Wl,-rpath,${SRCDIR}/../../../zig-out/lib
 #include "hk.h"
 #include <stdlib.h>
 */
@@ -40,6 +42,10 @@ const (
 	StorageDQT         StorageType = 0x14
 	StorageQ4_0        StorageType = 0x15
 	StorageQ8_0        StorageType = 0x16
+	StorageQ4_1        StorageType = 0x17
+	StorageQ5_0        StorageType = 0x18
+	StorageQ5_1        StorageType = 0x19
+	StorageQ8_1        StorageType = 0x1A
 	StorageSparseF16   StorageType = 0x20
 	StorageSparseDQ8   StorageType = 0x21
 	StorageSparse24    StorageType = 0x22
@@ -60,6 +66,8 @@ const (
 	StorageIQ3_XXS     StorageType = 0x54
 	StorageIQ4_NL      StorageType = 0x55
 	StorageIQ4_XS      StorageType = 0x56
+	StorageIQ2_S       StorageType = 0x57
+	StorageIQ3_S       StorageType = 0x58
 	StorageTQ1_0       StorageType = 0x60
 	StorageTQ2_0       StorageType = 0x61
 	StorageMXFP4       StorageType = 0x62
@@ -67,26 +75,26 @@ const (
 )
 
 const (
-	FlagIsSharded              = 0x40
-	FlagRawWeightStorage       = 1 << 7
-	FlagUniversalPageAligned   = 1 << 8
-	DefaultAlignmentBytes      = 128
+	FlagIsSharded               = 0x40
+	FlagRawWeightStorage        = 1 << 7
+	FlagUniversalPageAligned    = 1 << 8
+	DefaultAlignmentBytes       = 128
 	UniversalPageAlignmentBytes = 4096
-	AppleSiliconAlignmentBytes = 16384
-	DirectDMAAlignmentBytes    = 65536
+	AppleSiliconAlignmentBytes  = 16384
+	DirectDMAAlignmentBytes     = 65536
 )
 
 type TileLayout byte
 
 const (
-	TileRowMajor       TileLayout = 0x00
-	TileColMajor       TileLayout = 0x01
-	Tile16x16          TileLayout = 0x02
-	Tile16x8           TileLayout = 0x03
-	Tile32x16          TileLayout = 0x04
-	TileBlockSparse24  TileLayout = 0x05
-	Tile32x32          TileLayout = 0x06
-	Tile64x64          TileLayout = 0x07
+	TileRowMajor      TileLayout = 0x00
+	TileColMajor      TileLayout = 0x01
+	Tile16x16         TileLayout = 0x02
+	Tile16x8          TileLayout = 0x03
+	Tile32x16         TileLayout = 0x04
+	TileBlockSparse24 TileLayout = 0x05
+	Tile32x32         TileLayout = 0x06
+	Tile64x64         TileLayout = 0x07
 )
 
 type SparsityType byte
@@ -230,6 +238,8 @@ type AppendixEntry struct {
 	Name         string
 	Target       string
 	DataSize     uint64
+	// Data is a copy of the record's payload.
+	Data []byte
 }
 
 type Model struct {
@@ -382,6 +392,9 @@ func (m *Model) GetAppendixEntry(index int) (*AppendixEntry, error) {
 		Name:         C.GoString(cEntry.name),
 		Target:       C.GoString(cEntry.target),
 		DataSize:     uint64(cEntry.data_size),
+	}
+	if cEntry.data != nil && cEntry.data_size > 0 {
+		entry.Data = C.GoBytes(cEntry.data, C.int(cEntry.data_size))
 	}
 	for i := 0; i < 32; i++ {
 		entry.ParentHash[i] = byte(cEntry.parent_hash[i])
@@ -908,5 +921,3 @@ func DotInt8(a, b []int8) int32 {
 	}
 	return int32(C.hk_dot_int8((*C.int8_t)(&a[0]), (*C.int8_t)(&b[0]), C.size_t(len(a))))
 }
-
-

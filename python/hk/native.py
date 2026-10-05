@@ -11,60 +11,69 @@ import struct
 import sys
 import types
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, Union, List
+from typing import Optional, Tuple, Dict, Any, Union, List, Sequence
 import numpy as np
 import torch
 
-# Locate native library (hk.dll / libhk.so / libhk.dylib / architecture-specific binaries)
-def _find_native_lib() -> str:
+def _library_names() -> List[str]:
+    """File names to look for, for this operating system and CPU only."""
     system = platform.system().lower()
     machine = platform.machine().lower()
-
-    # Prioritize exact OS and architecture match
-    possible_names = []
+    arm = "arm" in machine or "aarch64" in machine
     if "windows" in system or sys.platform == "win32":
-        possible_names.extend(["hk.dll", "libhk.dll", "hk-x86_64.dll"])
-    elif "darwin" in system:
-        if "arm" in machine or "aarch64" in machine:
-            possible_names.extend(["libhk-macos-arm64.dylib", "libhk.dylib"])
-        else:
-            possible_names.extend(["libhk-macos-x86_64.dylib", "libhk.dylib"])
-    elif "linux" in system:
-        if "arm" in machine or "aarch64" in machine:
-            possible_names.extend(["libhk-linux-aarch64.so", "libhk.so"])
-        else:
-            possible_names.extend(["libhk-linux-x86_64.so", "libhk.so"])
+        return ["hk.dll", "libhk.dll"]
+    if "darwin" in system:
+        return ["libhk-macos-arm64.dylib" if arm else "libhk-macos-x86_64.dylib", "libhk.dylib"]
+    if "linux" in system:
+        return ["libhk-linux-aarch64.so" if arm else "libhk-linux-x86_64.so", "libhk.so"]
+    return []
 
-    # Fallback generic names
-    possible_names.extend(["hk.dll", "libhk.so", "libhk.dylib", "libhk-linux-x86_64.so", "libhk-macos-arm64.dylib"])
 
-    search_dirs = [
-        Path(__file__).resolve().parent.parent.parent / "zig-out" / "bin",
-        Path(os.getcwd()) / "zig-out" / "bin",
-        Path(__file__).resolve().parent,
-        Path(__file__).resolve().parent / "lib",
-        Path(__file__).resolve().parent.parent.parent / "zig-out" / "lib",
+def _search_dirs() -> List[Path]:
+    here = Path(__file__).resolve().parent
+    dirs = []
+    override = os.environ.get("HK_LIB_DIR")
+    if override:
+        dirs.append(Path(override))
+    dirs += [
+        here.parent.parent / "zig-out" / "lib",
         Path(os.getcwd()) / "zig-out" / "lib",
+        here.parent.parent / "zig-out" / "bin",
+        Path(os.getcwd()) / "zig-out" / "bin",
+        here,
+        here / "lib",
         Path(os.getcwd()),
     ]
-    for d in search_dirs:
-        for name in possible_names:
-            candidate = d / name
-            if candidate.is_file():
-                return str(candidate)
-    # Fallback to system search
-    for name in possible_names:
-        try:
-            return str(Path(name).resolve())
-        except Exception:
-            pass
-    return "hk.dll"
+    return dirs
 
-_LIB_PATH = _find_native_lib()
-try:
-    _LIB = ctypes.CDLL(_LIB_PATH)
-except Exception as e:
-    _LIB = None
+
+def _load_native() -> Tuple[Optional[ctypes.CDLL], str, str]:
+    """Loads the first library that works. Returns (library, path, reason it is missing)."""
+    names = _library_names()
+    if not names:
+        return None, "", f"no native library is built for {platform.system()} {platform.machine()}"
+    tried = []
+    for d in _search_dirs():
+        for name in names:
+            candidate = d / name
+            if not candidate.is_file():
+                continue
+            try:
+                return ctypes.CDLL(str(candidate)), str(candidate), ""
+            except OSError as e:
+                tried.append(f"{candidate}: {e}")
+    if tried:
+        return None, "", "found a library but could not load it: " + "; ".join(tried)
+    return None, "", "no native library found (build one with `zig build -Doptimize=ReleaseFast`, or set HK_LIB_DIR)"
+
+
+_LIB, _LIB_PATH, _LIB_ERROR = _load_native()
+
+
+def native_unavailable_reason() -> str:
+    """Why the native library is not in use, or an empty string when it is."""
+    return _LIB_ERROR
+
 
 # Struct definitions matching C_TensorInfo
 class C_TensorInfo(ctypes.Structure):
@@ -623,6 +632,20 @@ if _LIB is not None:
 
         _LIB.hk_engine_free.argtypes = [ctypes.c_void_p]
         _LIB.hk_engine_free.restype = None
+
+        if hasattr(_LIB, "hk_engine_forward_tokens"):
+            _LIB.hk_engine_forward_tokens.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_uint32),
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+                ctypes.POINTER(ctypes.c_float),
+            ]
+            _LIB.hk_engine_forward_tokens.restype = ctypes.c_int
+            _LIB.hk_engine_get_context_size.argtypes = [ctypes.c_void_p]
+            _LIB.hk_engine_get_context_size.restype = ctypes.c_uint32
+            _LIB.hk_engine_last_error.argtypes = [ctypes.c_char_p, ctypes.c_uint32]
+            _LIB.hk_engine_last_error.restype = ctypes.c_uint32
 
     if hasattr(_LIB, "hk_sample_token"):
         _LIB.hk_sample_token.argtypes = [
@@ -2192,20 +2215,37 @@ class NativeHKTokenizer:
         return buf.raw[:written].decode("utf-8", errors="replace")
 
 
+_ENGINE_ERRORS = {
+    -1: "invalid argument",
+    -2: "the context window is full",
+    -3: "too many tokens in one call",
+    -4: "the forward pass failed",
+}
+
+
 class NativeHKEngine:
-    """High-performance native Transformer Inference Engine powered by compiled Zig engine."""
+    """Native transformer engine (Llama, Qwen2 and Qwen3 style models) over the compiled Zig library.
+
+    Weights are memory mapped from the file, so opening a model costs very little memory.
+    Positions are explicit: pass the position of the first token you feed, and call
+    `reset_cache()` before starting a new conversation.
+    """
 
     def __init__(self, file_path: Union[str, Path]):
         if not is_native_available() or not hasattr(_LIB, "hk_engine_load_from_file"):
-            raise RuntimeError("Native HK shared library (libhk) required for NativeHKEngine")
-        p = str(file_path).encode("utf-8")
-        self._ptr = _LIB.hk_engine_load_from_file(p)
+            raise RuntimeError("Native HK shared library (libhk) required for NativeHKEngine: " + native_unavailable_reason())
+        self._ptr = _LIB.hk_engine_load_from_file(str(file_path).encode("utf-8"))
         if not self._ptr:
-            raise RuntimeError(f"Failed to load native engine from {file_path}")
+            reason = ""
+            if hasattr(_LIB, "hk_engine_last_error"):
+                buf = ctypes.create_string_buffer(512)
+                n = _LIB.hk_engine_last_error(buf, 512)
+                reason = buf.raw[:n].decode("utf-8", "replace")
+            raise RuntimeError(f"Failed to load native engine from {file_path}" + (f": {reason}" if reason else ""))
         self._vocab_size = int(_LIB.hk_engine_get_vocab_size(self._ptr))
 
     def close(self):
-        if hasattr(self, "_ptr") and self._ptr and _LIB is not None:
+        if getattr(self, "_ptr", None) and _LIB is not None:
             _LIB.hk_engine_free(self._ptr)
             self._ptr = None
 
@@ -2222,23 +2262,39 @@ class NativeHKEngine:
     def vocab_size(self) -> int:
         return self._vocab_size
 
+    @property
+    def context_size(self) -> int:
+        if not self._ptr:
+            raise RuntimeError("Engine not loaded")
+        return int(_LIB.hk_engine_get_context_size(self._ptr))
+
     def reset_cache(self):
         if self._ptr:
             _LIB.hk_engine_reset_cache(self._ptr)
 
-    def forward_step(self, token: int, pos: int) -> np.ndarray:
+    def forward(self, tokens: Sequence[int], pos: int = 0) -> np.ndarray:
+        """Feeds `tokens` starting at position `pos` and returns the logits after the last one."""
         if not self._ptr:
             raise RuntimeError("Engine not loaded")
+        arr = np.ascontiguousarray(tokens, dtype=np.uint32)
+        if arr.size == 0:
+            raise ValueError("forward needs at least one token")
+        if int(arr.max()) >= self._vocab_size:
+            raise ValueError(f"token id {int(arr.max())} is outside the vocabulary of {self._vocab_size}")
         logits = np.empty(self._vocab_size, dtype=np.float32)
-        ret = _LIB.hk_engine_forward(
+        ret = _LIB.hk_engine_forward_tokens(
             self._ptr,
-            ctypes.c_uint32(token),
+            arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            ctypes.c_uint32(arr.size),
             ctypes.c_uint32(pos),
             logits.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
         )
         if ret != 0:
-            raise RuntimeError(f"Engine forward step failed with code {ret}")
+            raise RuntimeError(f"Engine forward failed: {_ENGINE_ERRORS.get(ret, ret)}")
         return logits
+
+    def forward_step(self, token: int, pos: int) -> np.ndarray:
+        return self.forward([token], pos)
 
 
 def convert_safetensors_to_hk(input_path: Union[str, Path], output_path: Union[str, Path], storage_type: int = 0) -> None:

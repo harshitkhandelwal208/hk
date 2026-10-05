@@ -131,9 +131,9 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const io = std.Options.debug_io;
 
-    std.debug.print("\n" ++ "=" ** 78 ++ "\n", .{});
+    std.debug.print("\n" ++ &@as([78]u8, @splat('=')) ++ "\n", .{});
     std.debug.print("  EMPIRICAL KERNEL BENCHMARK: BASELINE (BEFORE) vs OPTIMIZED (AFTER)\n", .{});
-    std.debug.print("=" ** 78 ++ "\n", .{});
+    std.debug.print(&@as([78]u8, @splat('=')) ++ "\n", .{});
 
     // -------------------------------------------------------------
     // Benchmark 1: GEMM Matrix Multiply (M=64, K=512, N=512)
@@ -281,6 +281,6 @@ pub fn main(init: std.process.Init) !void {
         const speedup = dur_base / dur_opt;
         std.debug.print("[5] GEMV Q8_0 (128x512):     Baseline = {d:.2} us | Optimized = {d:.2} us | Speedup = {d:.2}x\n", .{ dur_base, dur_opt, speedup });
     }
-    std.debug.print("=" ** 78 ++ "\n\n", .{});
+    std.debug.print(&@as([78]u8, @splat('=')) ++ "\n\n", .{});
     return;
 }

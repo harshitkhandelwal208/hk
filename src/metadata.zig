@@ -381,7 +381,10 @@ pub fn patchFileMetadataInPlace(
     // Copy existing TOC
     const toc_end = header.tensor_toc_offset + header.tensor_toc_size;
     if (toc_end > region.bytes.len) return error.TOCOutOfBounds;
-    const toc_bytes = region.bytes[header.tensor_toc_offset..toc_end];
+    // Copied out of the mapping: the metadata below is written over the front of the old TOC when
+    // it grows, and a view into the mapped file would change under us.
+    const toc_bytes = try allocator.dupe(u8, region.bytes[header.tensor_toc_offset..toc_end]);
+    defer allocator.free(toc_bytes);
 
     const header_size = @sizeOf(format.FileHeader);
     const needed_space = new_meta_bytes.len + toc_bytes.len;
@@ -419,7 +422,9 @@ pub fn patchFileMetadataInPlace(
             try platform.writeBytesAtOffset(file_path, zeros, pad_start, allocator);
         }
     } else {
-        // If metadata exceeds pre-tensor space, append metadata to EOF
+        // If metadata exceeds pre-tensor space, append metadata to EOF. Appendix records run
+        // to end of file, so trailing metadata bytes would be misparsed as a record.
+        if (header.appendix_offset != 0) return error.MetadataExceedsPaddingWithAppendix;
         const new_meta_offset = region.bytes.len;
         header.metadata_kv_count = meta_map.items.items.len;
         header.metadata_offset = new_meta_offset;

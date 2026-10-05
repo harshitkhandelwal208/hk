@@ -1,26 +1,46 @@
-# Empirical Benchmark Report: HK vs SafeTensors vs GGUF
+# Benchmarks
 
-**Hardware Platform**: NVIDIA GeForce RTX 3050 6GB Laptop GPU
-**Base Model Size**: 72.00 MB (Float32 parameters)
+These numbers come from `hk-compare` (`tools/hk_compare.zig`), which runs hk and llama.cpp on the same models, on the same machine, alternating between the two so a slow moment hits both. Reproduce with:
 
-| Format / Layout | File Size (MB) | Compression | Save Latency | Load Latency | RMSE vs FP32 | Cosine Sim | 128B Tensor Core Aligned | Dynamic Growth |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **SafeTensors (HuggingFace)** | 72.00 MB | 1.00x | 27.5 ms | 3.1 ms | 0.00 (Lossless) | 1.000158 | NO (32B/None) | NO (Static) |
-| **GGUF (llama.cpp)** | 72.00 MB | 1.00x | 27.2 ms | 6.3 ms | 0.00 (Lossless) | 1.000158 | NO (32B/None) | NO (Static) |
-| **HK Container (Dense F32)** | 72.00 MB | 1.00x | 98.1 ms | 4.6 ms | 0.00 (Lossless) | 1.000158 | YES (128B) | YES (Appendix) |
-| **HK Container (Ampere 2:4 Packed)** | 72.00 MB | 1.00x | 88.6 ms | 3.7 ms | 0.00 (Lossless) | 1.000000 | YES (128B) | YES (Appendix) |
-| **HK Dual-Mode NF4 + Residual** | 72.00 MB | 1.00x | 84.1 ms | 2.9 ms | 0.00 (Lossless) | 1.000158 | YES (128B) | YES (Appendix) |
+```bash
+zig build -Doptimize=ReleaseFast
+./zig-out/bin/hk-compare --llama-bin /path/to/llama.cpp/build/bin \
+    --pair model.hk:model.gguf --threads 6 --repeats 5 --out benchmarks/results.md
+```
 
-## Architectural Feature Comparison
+Each `.hk` was made from the same GGUF with `hk convert-gguf`, so the weights are identical. Speeds are tokens per second.
 
-| Feature | SafeTensors (HuggingFace) | GGUF (llama.cpp) | HK Unified Framework (v1.0.0) |
-|:---|:---:|:---:|:---:|
-| **Dual-Mode Quantization** | No (Dense Only) | No (1-Way Lossy) | **Yes (NF4/DQ8 + Residual Recovery)** |
-| **Ampere 2:4 Native Sparsity** | No | No | **Yes (Direct HW Packed Nibble Indices)** |
-| **Tensor Core K-Contiguous Tiles** | No (Row-Major) | No (CPU Strided) | **Yes (16x16 / 16x8 / 32x16 WMMA Tiles)** |
-| **Zero-Copy Memory Alignment** | Variable | 32-byte | **Strict 128-Byte Cache/Warp Coalescing** |
-| **Dynamic Architecture Growth (Net2Net)** | No | No | **Yes (Net2WiderNet & Net2DeeperNet)** |
-| **Appendix Version Chaining & Rollback** | No | No | **Yes (Cryptographic SHA-256 Lineage)** |
-| **Persistent Code Execution Sandbox** | No | No | **Yes (Integrated Execution & Scoring)** |
-| **Self-Play Evolution (SPIN)** | No | No | **Yes (Targeted LoRA Delta Adaptation)** |
-| **Head Script & Topology Packaging** | External Only | Metadata Dict | **Yes (Embedded Runnable Head)** |
+## Latest run
+
+Conditions: llama.cpp 0.5.0-dev (build 1, commit 8216c84, GCC 16.2.1, CPU backend), hk built with `-Doptimize=ReleaseFast`, kernel level `avx512-vnni`. The machine was not idle: a web browser was open (about 20% of one core in `ps`), and the CPU is a laptop part that throttles, so single runs vary by several percent; use the bracketed ranges. 2026-10-05.
+
+Machine: AMD Ryzen 7 7445HS w/ Radeon 740M Graphics, 6 threads, CPU only. Kernel level: see hk-probe.
+Prompt 512 tokens, generate 64; median of 5 alternating runs of each tool, range in brackets.
+
+| Model | Prefill hk | Prefill llama.cpp | hk / llama.cpp | Decode hk | Decode llama.cpp | hk / llama.cpp |
+|:---|---:|---:|---:|---:|---:|---:|
+| SmolLM2-135M-Instruct-Q8_0 | 2633 [2381-2781] | 1958 [1827-1972] | 135% | 145.5 [144.8-149.1] | 147.9 [147.0-152.1] | 98% |
+| SmolLM2-135M-Instruct-Q4_0 | 2985 [2863-3087] | 2178 [2125-2211] | 137% | 217.0 [208.5-218.1] | 226.7 [223.0-233.4] | 96% |
+| SmolLM2-135M-Instruct-Q4_K_M | 2671 [2548-2721] | 1747 [1661-1763] | 153% | 191.2 [188.1-194.7] | 198.5 [197.1-203.8] | 96% |
+| SmolLM2-135M-Instruct-Q5_K_M | 2555 [2544-2619] | 1063 [1059-1083] | 240% | 183.1 [181.4-193.5] | 190.7 [186.6-193.5] | 96% |
+| SmolLM2-135M-Instruct-Q6_K | 2400 [2328-2581] | 1971 [1736-2058] | 122% | 151.5 [149.5-158.9] | 152.8 [149.6-161.3] | 99% |
+| SmolLM2-135M-Instruct-Q3_K_M | 2458 [2224-2497] | 2176 [2029-2229] | 113% | 209.5 [202.0-217.6] | 222.4 [215.6-227.2] | 94% |
+| SmolLM2-135M-Instruct-Q2_K | 2416 [2314-2532] | 2289 [2235-2386] | 106% | 220.0 [218.8-225.6] | 236.7 [226.8-245.2] | 93% |
+| SmolLM2-135M-Instruct-IQ4_XS | 2172 [2066-2188] | 2394 [2307-2406] | 91% | 210.6 [202.0-224.3] | 228.5 [215.8-231.9] | 92% |
+| SmolLM2-135M-Instruct-f16 | 1821 [1819-1846] | 1828 [1780-1842] | 100% | 82.6 [80.7-84.3] | 82.8 [81.8-84.5] | 100% |
+| Qwen3-0.6B-Q8_0 | 774 [725-785] | 490 [484-498] | 158% | 33.5 [33.3-33.8] | 36.0 [35.5-36.5] | 93% |
+
+Memory during a greedy generation (MiB). Private is memory the process owns; the rest of resident memory is the model file mapped from disk. llama.cpp is run with a 1024 token context, because by default it reserves the model's whole training context up front. hk allocates its cache as it fills.
+
+| Model | hk peak resident | hk private | llama.cpp peak resident | llama.cpp private |
+|:---|---:|---:|---:|---:|
+| SmolLM2-135M-Instruct-Q8_0 | 145 | 8 | 197 | 45 |
+| SmolLM2-135M-Instruct-Q4_0 | 100 | 8 | 210 | 109 |
+| SmolLM2-135M-Instruct-Q4_K_M | 89 | 8 | 179 | 65 |
+| SmolLM2-135M-Instruct-Q5_K_M | 119 | 8 | 177 | 56 |
+| SmolLM2-135M-Instruct-Q6_K | 134 | 8 | 203 | 57 |
+| SmolLM2-135M-Instruct-Q3_K_M | 104 | 10 | 212 | 109 |
+| SmolLM2-135M-Instruct-Q2_K | 82 | 8 | 199 | 102 |
+| SmolLM2-135M-Instruct-IQ4_XS | 101 | 10 | 201 | 101 |
+| SmolLM2-135M-Instruct-f16 | 263 | 9 | 326 | 54 |
+| Qwen3-0.6B-Q8_0 | 644 | 30 | 801 | 182 |

@@ -30,6 +30,10 @@ namespace Hk
         DQT = 0x14,
         Q4_0 = 0x15,
         Q8_0 = 0x16,
+        Q4_1 = 0x17,
+        Q5_0 = 0x18,
+        Q5_1 = 0x19,
+        Q8_1 = 0x1A,
         SparseF16 = 0x20,
         SparseDQ8 = 0x21,
         Sparse24 = 0x22,
@@ -50,6 +54,8 @@ namespace Hk
         IQ3_XXS = 0x54,
         IQ4_NL = 0x55,
         IQ4_XS = 0x56,
+        IQ2_S = 0x57,
+        IQ3_S = 0x58,
         TQ1_0 = 0x60,
         TQ2_0 = 0x61,
         MXFP4 = 0x62,
@@ -480,6 +486,9 @@ namespace Hk
         public string Target { get; }
         public ulong DataSize { get; }
 
+        /// <summary>A copy of the record's payload.</summary>
+        public byte[] Data { get; }
+
         internal HkAppendixEntry(CAppendixEntry entry)
         {
             EntryType = (AppendixType)entry.entry_type;
@@ -494,6 +503,15 @@ namespace Hk
             Name = Marshal.PtrToStringUTF8(entry.name) ?? string.Empty;
             Target = Marshal.PtrToStringUTF8(entry.target) ?? string.Empty;
             DataSize = entry.data_size;
+            if (entry.data != IntPtr.Zero && entry.data_size > 0)
+            {
+                Data = new byte[entry.data_size];
+                Marshal.Copy(entry.data, Data, 0, (int)entry.data_size);
+            }
+            else
+            {
+                Data = Array.Empty<byte>();
+            }
         }
     }
 

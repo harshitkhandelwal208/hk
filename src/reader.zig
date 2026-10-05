@@ -7,6 +7,7 @@ const nf4 = @import("nf4.zig");
 const quantization = @import("quantization.zig");
 const sparsity = @import("sparsity.zig");
 const tiling = @import("tiling.zig");
+const quant = @import("quant.zig");
 
 pub const HKReader = struct {
     allocator: std.mem.Allocator,
@@ -574,6 +575,16 @@ pub const HKReader = struct {
                 const packed_block = data_bytes[(b * 8)..];
                 quantization.dequantizeBlockNVFP4(packed_block, fp8_scale, count, out[start..end]);
             }
+            return;
+        }
+
+        // Everything else that GGUF defines as a block format (Q4_1, Q5_0, Q5_1, the I-quants, IQ4_XS,
+        // the ternary types) is decoded by the same routines the engine uses.
+        if (quant.blocks.info(entry.storage_type)) |bi| {
+            if (out.len % bi.elems != 0) return error.UnsupportedStorageType;
+            const need = out.len / bi.elems * bi.bytes;
+            if (data_bytes.len < need) return error.UnsupportedStorageType;
+            quant.dequant.dequantizeRow(entry.storage_type, data_bytes[0..need], out) catch return error.UnsupportedStorageType;
             return;
         }
 

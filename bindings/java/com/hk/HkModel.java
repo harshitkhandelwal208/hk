@@ -9,15 +9,18 @@ import java.nio.FloatBuffer;
 
 /**
  * HK Java / Android SDK
- * High-performance, zero-copy neural tensor format reader, writer, and SIMD inference interface.
+ * Reader and writer for HK containers over the C ABI (through JNI). It does not run inference.
  */
 public final class HkModel implements Closeable, AutoCloseable {
 
     static {
+        // libhk is the C library; libhkjni (built with `zig build jni -Djdk=...`) is the JNI glue.
+        // Both must be on java.library.path, or load them yourself with System.load() first.
         try {
             System.loadLibrary("hk");
+            System.loadLibrary("hkjni");
         } catch (UnsatisfiedLinkError e) {
-            // Can be manually loaded if needed via System.load()
+            // Left for the caller: the first native call then fails with the same error.
         }
     }
 
@@ -45,6 +48,10 @@ public final class HkModel implements Closeable, AutoCloseable {
         public static final byte DQT = 0x14;
         public static final byte Q4_0 = 0x15;
         public static final byte Q8_0 = 0x16;
+        public static final byte Q4_1 = 0x17;
+        public static final byte Q5_0 = 0x18;
+        public static final byte Q5_1 = 0x19;
+        public static final byte Q8_1 = 0x1A;
         public static final byte SPARSE_F16 = 0x20;
         public static final byte SPARSE_DQ8 = 0x21;
         public static final byte SPARSE_2_4 = 0x22;
@@ -65,6 +72,8 @@ public final class HkModel implements Closeable, AutoCloseable {
         public static final byte IQ3_XXS = 0x54;
         public static final byte IQ4_NL = 0x55;
         public static final byte IQ4_XS = 0x56;
+        public static final byte IQ2_S = 0x57;
+        public static final byte IQ3_S = 0x58;
         public static final byte TQ1_0 = 0x60;
         public static final byte TQ2_0 = 0x61;
         public static final byte MXFP4 = 0x62;

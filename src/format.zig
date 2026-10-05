@@ -82,6 +82,8 @@ pub const StorageType = enum(u8) {
     iq3_xxs = 0x54, // 3-bit extra-extra-small (3.06 bpw)
     iq4_nl = 0x55, // 4-bit non-linear codebook (4.5 bpw)
     iq4_xs = 0x56, // 4-bit extra-small (4.25 bpw)
+    iq2_s = 0x57, // 2-bit small (2.5 bpw)
+    iq3_s = 0x58, // 3-bit small (3.44 bpw)
 
     // Ternary & Microscaling
     tq1_0 = 0x60, // 1.58-bit ternary quantization
@@ -145,7 +147,7 @@ pub const FileHeader = extern struct {
     appendix_offset: u64 = 0,
     checksum: u64 = 0,
     split_count: u16 = 1, // Sharding: total number of shards (>= 1)
-    reserved1: [38]u8 = [_]u8{0} ** 38,
+    reserved1: [38]u8 = @as([38]u8, @splat(0)),
 
     pub fn isValid(self: *const FileHeader) bool {
         return std.mem.eql(u8, &self.magic, &MAGIC) and self.version_major == VERSION_MAJOR;
@@ -214,7 +216,7 @@ pub const AppendixRecordHeader = extern struct {
     name_len: u16,
     generation: u32,
     timestamp: u64,
-    parent_hash: [32]u8 = [_]u8{0} ** 32,
+    parent_hash: [32]u8 = @as([32]u8, @splat(0)),
     metric_loss: f32 = 0.0,
     metric_acc: f32 = 0.0,
     metric_pass: f32 = 0.0,
@@ -238,7 +240,7 @@ pub const AppendixRecord = struct {
     target: []const u8 = "",
     generation: u32,
     timestamp: u64,
-    parent_hash: [32]u8 = [_]u8{0} ** 32,
+    parent_hash: [32]u8 = @as([32]u8, @splat(0)),
     metrics: AppendixMetrics = .{},
     data: []const u8,
 };

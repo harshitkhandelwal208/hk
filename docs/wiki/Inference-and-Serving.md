@@ -1,136 +1,74 @@
 # Inference and Serving
 
-In this guide, I explain how to run high-performance inference using HK, both via the native standalone CLI and through Python.
+## The engine
 
----
+`hk run`, `hk chat` and `hk serve` use the same engine, written for this project. It is a dense decoder transformer (see [Compatibility](Compatibility.md)) with these properties:
 
-## 1. Local CLI Inference (Fast, Lightweight, Zero-Config)
+- **Weights stay in the file.** They are memory mapped and read in place; the quantized formats are used as they are, with integer dot products against activations quantized to 8 bits per block of 32 (legacy formats) or 256 (K and IQ formats), the same scheme GGML uses.
+- **Prompts are processed in batches.** Up to 256 tokens go through the network at once, with a register tiled matrix multiply, so a long prompt is far faster than the same tokens one by one.
+- **The KV cache is f16** and grows in segments of 256 positions, so the memory it uses follows the real context length, not the configured maximum.
+- **Attention is exact.** One pass with an online softmax, keys stored transposed in tiles so sixteen positions are scored per vector. At long contexts one token's attention is split over several threads.
+- **Everything is allocated up front.** A forward pass allocates nothing.
+- **Deterministic.** With `--temp 0` the same prompt gives the same text, run after run and on every instruction set level.
 
-I built a standalone native executable written in Zig for HK. It does not require Python, PyTorch, or CUDA toolkits to run high-throughput CPU inference.
-
-### Process Footprint
-- Idle Memory: 2.8 MB of RAM (compared to 200+ MB for Python/PyTorch runtimes).
-- Startup Time: Under 55 milliseconds.
-- SIMD Kernels: Automatically detects AVX2, AVX-512, or ARM NEON on your processor.
-
-### One-Off Text Generation (`hk run`)
-To generate text from a prompt:
+## Command line
 
 ```bash
-hk run model.hk -p "Write a quick Python script to download an image from a URL" -n 128
+hk run model.hk "Explain gravity in one sentence." --temp 0 -n 64
+hk run model.hk "What is 2+2?" --chat           # wrap the prompt with the chat template
+hk chat model.hk                                # interactive, keeps the conversation
 ```
 
-Key flags:
-- `-p, --prompt`: Input text prompt.
-- `-n, --n-predict`: Maximum number of tokens to generate (default: 128).
-- `--temp`: Sampling temperature (e.g. `0.7`). Higher means more creative; `0.0` is greedy argmax.
-- `--top-p`: Nucleus sampling cutoff (e.g. `0.9`).
-- `--top-k`: Top-K candidate pool size (e.g. `40`).
-- `--repeat-penalty`: Penalizes repeated token loops (default: `1.10`).
+Statistics are printed to standard error after each answer:
 
-### Interactive Chat Session (`hk chat`)
-To start an interactive chat session directly in your terminal:
+```
+[prompt 21 tok (0 cached), 412.0 tok/s | generated 64 tok, 38.9 tok/s | memory 663 MiB = 52 private + 611 mapped | threads 6]
+```
+
+"Private" is memory the process owns; "mapped" is the model file in the page cache, which the operating system can drop. Within one `hk chat` session the text of earlier turns is not evaluated again: only the new message is.
+
+## Server
 
 ```bash
-hk chat model.hk --temp 0.7
+hk serve model.hk --port 8080 --slots 4 --ctx 4096
 ```
 
-In chat mode:
-- HK reads the chat template embedded inside the model metadata.
-- Context history is preserved across turns.
-- Type your prompt and press Enter. Type `/exit` or `/quit` to leave.
+| Option | Meaning | Default |
+|:---|:---|:---|
+| `--host ADDR` | address to listen on | 127.0.0.1 |
+| `--port N` | port | 8080 |
+| `--slots N` | conversations served at once (1 to 64) | 4 |
+| `--ctx N` | context window per slot | the model's, up to 8192 |
+| `--batch N` | most tokens per forward pass | 256 |
+| `--threads N` | compute threads | physical cores |
+| `-ngl N` | use the GPU (a device region per slot) | CPU |
+| `--api-key KEY` | require `Authorization: Bearer KEY` (or set `HK_API_KEY`) | none |
+| `--alias NAME` | model name reported by the API | file name |
+| `--max-body-mb N` | largest request body | 32 |
 
-### Dynamic CPU/GPU Offloading (`-ngl`)
-If your machine has a dedicated GPU (e.g., an NVIDIA RTX laptop card or desktop GPU), I added `-ngl` so you can offload layers to VRAM while keeping the rest on CPU:
+### Routes
 
-```bash
-# Offload 16 transformer blocks to GPU
-hk chat model.hk -ngl 16
+| Route | |
+|:---|:---|
+| `POST /v1/chat/completions` | chat, with or without streaming (`"stream": true`, `stream_options.include_usage`) |
+| `POST /v1/completions` | plain completion |
+| `GET /v1/models` | the loaded model |
+| `GET /health` | `{"status":"ok"}`; open even when an API key is set |
+| `GET /metrics` | Prometheus style counters (`hk_slots_active` and others) |
+| `POST /tokenize`, `POST /detokenize` | the model's tokenizer |
 
-# Offload all layers to GPU (if VRAM is large enough)
-hk run model.hk -p "Explain gravity" -ngl 99
-```
+Request fields understood: `messages`, `prompt`, `max_tokens` / `max_completion_tokens`, `temperature`, `top_p`, `top_k`, `min_p`, `seed`, `stop`, `presence_penalty`, `frequency_penalty`, `repeat_penalty`, `logit_bias`, `stream`, `stream_options`, `tools` (rendered through the template). Errors come back as OpenAI style JSON with the right status: 400 for malformed input and for a prompt longer than the context (`context_length_exceeded`), 401 for a missing or wrong key, 413 for an oversized body, 503 when every slot is busy and the queue is full.
 
-If you do not specify `-ngl`, HK executes cleanly on your CPU using register-unrolled SIMD kernels.
+### How concurrency works
 
----
+A scheduler thread owns the engine. Each step it takes one token from every active conversation, runs them as one batch, so the weights are streamed once for all of them, and samples a token for each. New prompts are evaluated in chunks between decode steps. A prompt cache reuses the longest shared prefix of a finished conversation, which is why a long system prompt costs nothing the second time. A client that disconnects mid stream frees its slot.
 
-## 2. Python Inference
+This is tested end to end (`tests/server_tests.zig`): a stream equals the non streamed answer, twelve concurrent requests over four slots give the same text as one at a time, a shared prefix is reused, disconnects free slots, an oversized body is refused, and the API key is enforced.
 
-If your application lives in Python, you have multiple ways to run inference:
+### What the server does not do
 
-### Using `AutoModelForCausalLM`
-HK provides a familiar interface matching Hugging Face conventions:
+No grammar or JSON schema constrained decoding, no tool call parsing (tools are rendered into the prompt, but the reply is returned as text), no speculative decoding, no vision inputs.
 
-```python
-from hk import AutoModelForCausalLM, AutoTokenizer
+## From Python and C
 
-# 1. Load model with zero-copy memory mapping
-model = AutoModelForCausalLM.from_pretrained("model.hk", torch_dtype="bfloat16")
-tokenizer = AutoTokenizer.from_pretrained("model.hk")
-
-# 2. Tokenize input
-prompt = "The key difference between CPU and GPU compute is"
-inputs = tokenizer(prompt, return_tensors="pt")
-
-# 3. Generate tokens
-output_ids = model.generate(
-    **inputs,
-    max_new_tokens=64,
-    temperature=0.7,
-    top_p=0.9,
-    do_sample=True,
-)
-
-# 4. Decode
-print(tokenizer.decode(output_ids[0], skip_special_tokens=True))
-```
-
-### High-Level Pipelines (`HKPipeline`)
-For standard tasks, you can use the unified pipeline:
-
-```python
-from hk.pipeline import pipeline
-
-# Create a text-generation pipeline
-generator = pipeline("text-generation", model="model.hk")
-
-results = generator("What are the advantages of zero-copy storage?", max_new_tokens=100)
-print(results[0]["generated_text"])
-```
-
----
-
-## 3. High-Performance Native Zig C-ABI Engine
-
-If you are building an application in C, C++, Rust, or Go, you can connect directly to the native C-ABI dynamic library (`hk.dll`, `libhk.so`, or `libhk.dylib`) without Python overhead:
-
-```c
-#include "hk.h"
-
-// 1. Open model container
-hk_model_t* model = hk_model_open("model.hk");
-
-// 2. Initialize inference context
-hk_context_t* ctx = hk_context_create(model, 32); // 32 layers to GPU
-
-// 3. Tokenize & forward step
-int token = 1204;
-int pos = 0;
-float* logits = hk_forward_step(ctx, token, pos);
-
-// 4. Clean up
-hk_context_free(ctx);
-hk_model_close(model);
-```
-
----
-
-## 4. Context Window Management
-
-HK includes zero-copy context window management in native Zig (`src/context.zig`).
-
-When a conversation exceeds the maximum token length:
-- Traditional Python setups rebuild and reallocate the token buffer, which takes hundreds of microseconds.
-- HK executes dynamic buffer truncation in native memory in **14.3 microseconds** on 65,000-token buffers (over 13x faster).
-- The KV cache is maintained without thrashing host memory.
+The C library exposes the same engine: `hk_engine_load_from_file`, `hk_engine_forward_tokens`, `hk_engine_reset_cache`, `hk_engine_get_vocab_size` and friends in `include/hk.h`, and the Python package wraps them as `hk.native.NativeHKEngine`. Hugging Face style classes (`AutoModelForCausalLM`) in the Python package run PyTorch models; see the [Python API Reference](Python-API-Reference.md).

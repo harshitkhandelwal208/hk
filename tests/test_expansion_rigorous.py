@@ -94,7 +94,9 @@ def test_vocab_expansion_logit_invariance():
         intermediate_size=128,
         tie_word_embeddings=True,
     )
-    model = HKForCausalLM(config)
+    # float64: float32 logits differ by BLAS summation order when the output width
+    # changes (100 -> 150 rows), which would mask real regressions behind a loose bound.
+    model = HKForCausalLM(config).double()
     model.eval()
 
     # Input using only existing tokens (0..99)
@@ -111,11 +113,11 @@ def test_vocab_expansion_logit_invariance():
     with torch.no_grad():
         logits_after = model(input_ids).logits
 
-    # Check that logits for the original 100 tokens are bit-exact
+    # Logits for the original 100 tokens must be unchanged (float64 rounding only)
     logits_after_old_slice = logits_after[..., :100]
     max_diff = torch.max(torch.abs(logits_after_old_slice - logits_before)).item()
     print(f"  Logit difference for original 100 tokens: {max_diff:.2e}")
-    assert max_diff < 1e-5, f"Original token logits changed: {max_diff}"
+    assert max_diff < 1e-10, f"Original token logits changed: {max_diff}"
     print("  [PASS] Existing token logits are numerically identical (< 1e-5) after vocabulary expansion.")
 
 

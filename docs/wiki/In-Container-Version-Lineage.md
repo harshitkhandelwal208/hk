@@ -1,114 +1,76 @@
-# In-Container Version Lineage and Instant Rollback
+# In-Container Version Lineage (Appendix)
 
-In this guide, I explain the Appendix region in `.hk` containers, which I designed for cryptographic version tracking and sub-millisecond rollback without duplicating base model weights.
+> **Status:** the appendix is a working, tested feature of the container: append-only records, a SHA-256 parent chain, listing, and truncating rollback. It is a *record-keeping* mechanism. The inference engine does not read or apply appendix records (a model runs from its base tensors only), and the chain is not a signature: it detects accidental or partial edits to the appendix, not a determined attacker.
 
----
-
-## The Problem with Traditional Model Versioning
-
-If you train or fine-tune models today, managing checkpoints is painful:
-- Duplicated Checkpoints: Each training step or epoch saves another multi-gigabyte folder. If you save 10 checkpoints of a 7B model, you burn through 140 gigabytes of disk space immediately.
-- Git LFS Overhead: Pushing model updates to Git repositories with LFS means cloning and pulling massive binary files repeatedly.
-- No Audit Trail: Once weights are overwritten or adjusted, you have no easy cryptographic way to verify which dataset, learning rate, or code generation created that specific state.
-- Accidental Poisoning: If a fine-tuning run encounters poisoned data or collapses into repetitive loops, rolling back means finding an old backup or retraining from scratch.
-
-I fixed this in HK by embedding an append-only version Directed Acyclic Graph (DAG) directly inside the `.hk` container: the **Appendix**.
+Binary layout of records is in [Format Specification](Format-Specification) section 8.
 
 ---
 
-## How the Appendix Works
+## What it does
 
-The Appendix resides at the tail end of the `.hk` container (`header.appendix_offset`). Base model weights live untouched at the beginning of the file.
+Records are appended after the base tensors; the base weights are never rewritten. Each record carries a name, a target (for example the tensor an adapter applies to), a generation number, a timestamp, four metrics (`loss`, `accuracy`, `pass_rate`, `custom`), a payload, and the SHA-256 of the previous record's `name ‖ target ‖ data`. Adding a record costs a write of that record's size, not of the model: `appendRecordToFile` writes at end of file and patches the header only for the first record.
 
-```
-+-------------------------------------------------------------+
-| Header & TOC                                                |
-+-------------------------------------------------------------+
-| Base Model Weights (Unchanged, zero-copy mapped)            |
-+-------------------------------------------------------------+
-| Appendix Region (Append-Only Version DAG)                   |
-|   - Generation 1: Initial base model state [Hash: 0x4a8f...] |
-|   - Generation 2: LoRA fine-tune on Python [Parent: 0x4a8f] |
-|   - Generation 3: Net2WiderNet expansion   [Parent: 0x89b1] |
-|   - Generation 4: Self-play training run   [Parent: 0xef20] |
-+-------------------------------------------------------------+
-```
-
-When you fine-tune with `HKTrainer` or run self-training cycles:
-1. Base weights remain untouched.
-2. Only the delta changes (e.g. low-rank adapter updates, dimension growth maps, or evaluation metrics) are appended as a new record at the end of the file.
-3. Each record contains a cryptographic SHA-256 hash of its parent state, creating an unbreakable chain of custody.
+Entry types: `lora_adapter`, `delta_patch`, `new_layer`, `code_eval`, `kv_cache_sink`, `topology_head`. The training tools in `python/hk/adaptive/` write `lora_adapter`/`code_eval`/`topology_head` records; see [Training and Fine-Tuning](Training-and-Fine-Tuning).
 
 ---
 
-## 1. Inspecting Version History
-
-You can view the full lineage of any `.hk` file directly from your terminal:
+## CLI
 
 ```bash
-hk appendix list model.hk
+hk appendix model.hk            # list records and report whether the lineage chain verifies
+hk rollback model.hk 2          # drop all records with generation > 2
 ```
 
-Example output:
-```
-================================================================================
-APPENDIX LINEAGE: model.hk
-================================================================================
-Gen | Type       | Step  | Loss   | Pass Rate | Timestamp           | Parent Hash
-----+------------+-------+--------+-----------+---------------------+------------
-  1 | BASE_STATE |     0 | 0.0000 |    0.0%   | 2026-03-01 10:14:00 | [Root]
-  2 | LORA_DELTA |  1500 | 1.4210 |   48.5%   | 2026-03-02 14:22:15 | 4a8fe901...
-  3 | NET2WIDER  |  1500 | 1.4210 |   48.5%   | 2026-03-02 18:05:30 | 89b144fa...
-  4 | SELF_PLAY  |  3000 | 0.8920 |   76.2%   | 2026-03-03 09:40:12 | ef20cc7b...
-================================================================================
-Total Appendix Records: 4 | Total Overhead: 24.8 MB (vs 28.0 GB duplicated)
-```
+`hk appendix` prints the entry count, `Cryptographic Lineage Valid: true|false`, and a table with index, type, generation, name, target, accuracy and pass rate per record.
 
-Notice the storage efficiency: four distinct model generations tracked in a single file with only 24.8 MB of delta overhead instead of duplicating four full 7 GB checkpoints.
+### Rollback truncates
+
+`rollbackToFile` scans records in order, keeps those with `generation <= N`, and **truncates the file** after the last kept record (with `N = 0` it also clears `appendix_offset` and the `HAS_APPENDIX` flag). Consequences:
+
+- It is fast (a truncate, no data copy) and does not touch the base weights.
+- It is **destructive**: the removed records are gone and cannot be restored from the file. Copy the file first if you may want them back.
+- It assumes records are stored in increasing generation order and stops at the first record above the target.
 
 ---
 
-## 2. Instant Generational Rollback
+## Verifying the chain
 
-If Generation 4 suffered from data poisoning or degraded quality on benchmark tests, you can instantly rollback the container to Generation 2:
+`AppendixReader.verifyLineage()` (also shown by `hk appendix`) checks, for each record after the first, that its `parent_hash` equals SHA-256 of the previous record's `name ‖ target ‖ data` (the payload-only hash used by older files is also accepted). It reports a bool; it does not say which record failed.
 
-```bash
-hk rollback model.hk --generation 2
-```
+What this does and does not protect:
 
-The rollback executes in under a millisecond. HK resets the active pointer and restores the Table of Contents to the exact state it had at Generation 2. You do not need to download anything or restore from a backup.
+- Detects: edits to an earlier record's name, target or payload; deleted or reordered middle records.
+- Does not cover: the base tensors, the header, or metadata. Changing weights does not invalidate the chain.
+- Does not authenticate: anyone who can rewrite the file can recompute the hashes. There are no signatures.
+- The per-record `data_crc32` field is reserved and currently always `0`.
 
 ---
 
-## 3. Python API (`AppendixManager`)
-
-You can also manage the Appendix programmatically in Python:
+## Python
 
 ```python
-from hk.adaptive.appendix import AppendixManager
+from hk.adaptive.appendix import AppendixManager, read_appendix
 
-manager = AppendixManager("model.hk")
+mgr = AppendixManager("model.hk")
 
-# List all generational records
-records = manager.list_records()
-for r in records:
-    print(f"Gen {r.generation} ({r.record_type}): loss={r.metrics.get('loss')}")
+mgr.append_lora_checkpoint(
+    name="math-lora-v1", target="blk.0.attn_q.weight", generation=1,
+    adapter_bytes=blob, metrics={"loss": 1.42, "accuracy": 0.485},
+)
 
-# Check cryptographic integrity
-is_valid, reason = manager.verify_chain_integrity()
-print("Cryptographic Lineage Valid:", is_valid)
+for r in mgr.get_records():
+    print(r.generation, r.entry_type.name, r.name, r.metrics.loss)
 
-# Rollback to generation 2
-if is_valid:
-    manager.rollback_to_generation(target_generation=2)
-    print("Rollback successful. Container active state restored to Gen 2.")
+print("chain valid:", mgr.verify())
+mgr.rollback(1)          # same truncating semantics as `hk rollback`
 ```
+
+Module-level helpers: `read_appendix`, `append_record`, `rollback_appendix`, `verify_lineage`, `compute_parent_hash`. The adaptive training loops (`HKTrainer`, the self-training pipeline) call `append_record` with metrics at checkpoints.
 
 ---
 
-## Security & Tamper Detection
+## Limitations
 
-Because each record links to the cryptographic hash of the entire container state before that record was appended:
-- Modifying earlier weights invalidates all downstream records.
-- If someone edits a byte in the base model or an earlier adapter, `hk verify` and `manager.verify_chain_integrity()` immediately report a hash mismatch and pinpoint the exact tampered record.
-- This provides enterprise-grade provenance and safety for deployed open weights.
+- No tool applies appended adapters or deltas to produce a merged model for the engine; merging is up to your own code.
+- Appending is not atomic. A crash mid-append can leave a truncated final record, which readers report as `TruncatedRecord`.
+- `hk metadata set` refuses to move metadata to the end of a file that has an appendix (the appendix runs to EOF); it succeeds only when the new metadata fits in the existing padding.

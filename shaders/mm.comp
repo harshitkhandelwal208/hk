@@ -1,0 +1,75 @@
+#version 450
+// y[t][r] = dot(row r of W, x[t]) (+ bias[r]) for a batch of tokens: the prompt kernel. A 64 x 64
+// tile of the output is computed by 256 threads, each owning a 4 x 4 block. Weights are decoded
+// into shared memory once per tile and shared by all 64 tokens.
+
+layout(local_size_x = 256) in;
+layout(std430, binding = 0) readonly buffer W { uint w32[]; };
+layout(std430, binding = 5) readonly buffer X4 { vec4 x4[]; };
+layout(std430, binding = 1) readonly buffer X { float x[]; };
+layout(std430, binding = 2) buffer Y { float y[]; };
+layout(std430, binding = 3) readonly buffer B { float bias[]; };
+layout(push_constant) uniform P {
+    uint rows;
+    uint cols;
+    uint row_bytes;
+    uint x_stride;
+    uint y_stride;
+    uint has_bias;
+    uint x_off;
+    uint y_off;
+    uint n_tokens;
+    uint mode;          // 0: y = result, 1: y += result
+} p;
+
+#include "common.glsl"
+
+const uint TM = 64u;
+const uint TN = 64u;
+const uint TK = 32u;
+shared vec4 As[TK][TM / 4u];
+shared vec4 Bs[TK][TN / 4u];
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint r0 = gl_WorkGroupID.x * TM;
+    uint t0 = gl_WorkGroupID.y * TN;
+    uint tx = tid & 15u;
+    uint ty = tid >> 4;
+    float acc[4][4];
+    for (uint i = 0u; i < 4u; i++) for (uint j = 0u; j < 4u; j++) acc[i][j] = 0.0;
+
+    for (uint k0 = 0u; k0 < p.cols; k0 += TK) {
+        // 64 rows x 32 columns of weights and 64 tokens x 32 columns of activations.
+        for (uint e = tid; e < TM * TK; e += 256u) {
+            uint m = e / TK;
+            uint k = e % TK;
+            uint col = k0 + k;
+            float v = 0.0;
+            if (r0 + m < p.rows) v = dq((r0 + m) * p.row_bytes + (col / ELEMS) * BYTES, col % ELEMS);
+            As[k][m >> 2][m & 3u] = v;
+            float a = 0.0;
+            if (t0 + m < p.n_tokens) a = x[p.x_off + (t0 + m) * p.x_stride + col];
+            Bs[k][m >> 2][m & 3u] = a;
+        }
+        barrier();
+        for (uint k = 0u; k < TK; k++) {
+            vec4 a = As[k][tx];
+            vec4 b = Bs[k][ty];
+            for (uint i = 0u; i < 4u; i++) for (uint j = 0u; j < 4u; j++) acc[i][j] += a[i] * b[j];
+        }
+        barrier();
+    }
+    for (uint j = 0u; j < 4u; j++) {
+        uint t = t0 + ty * 4u + j;
+        if (t >= p.n_tokens) continue;
+        for (uint i = 0u; i < 4u; i++) {
+            uint r = r0 + tx * 4u + i;
+            if (r < p.rows) {
+                uint yi = p.y_off + t * p.y_stride + r;
+                float v = acc[i][j] + (p.has_bias != 0u ? bias[r] : 0.0);
+                y[yi] = p.mode == 1u ? y[yi] + v : v;
+            }
+        }
+    }
+}

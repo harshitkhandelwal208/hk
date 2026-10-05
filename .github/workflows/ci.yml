@@ -23,8 +23,20 @@ jobs:
       - name: Setup Zig
         uses: ./.github/actions/setup-zig
 
-      - name: Run Zig Native Unit Tests
+      - name: Run Zig Native Unit Tests (portable kernels, Debug)
         run: zig build test --summary all
+
+      - name: Run Zig Native Unit Tests (every instruction set level, optimized)
+        run: zig build test -Doptimize=ReleaseFast --summary all
+
+      - name: Run Command Line and Server End to End Tests
+        run: zig build test-e2e -Doptimize=ReleaseFast --summary all
+
+      - name: Run Unit Tests at Lower Instruction Set Levels (x86-64 only)
+        if: runner.arch == 'X64'
+        run: |
+          zig build test -Doptimize=ReleaseFast -Dcpu=x86_64_v3 --summary all
+          zig build test -Doptimize=ReleaseFast -Dcpu=x86_64 --summary all
 
       - name: Build C Dynamic Library
         run: zig build
@@ -36,6 +48,8 @@ jobs:
           zig build -Dtarget=aarch64-linux -Doptimize=ReleaseFast
           zig build -Dtarget=x86_64-windows -Doptimize=ReleaseFast
           zig build -Dtarget=aarch64-macos -Doptimize=ReleaseFast
+          zig build -Dtarget=x86_64-macos -Doptimize=ReleaseFast
+          zig build -Dtarget=aarch64-linux -Dcpu=generic+dotprod -Doptimize=ReleaseFast
 
   python-test-matrix:
     name: Python Tests (${{ matrix.os }} / Py ${{ matrix.python-version }})
@@ -79,40 +93,25 @@ jobs:
           pytest tests/ -v --durations=10
 
   multilingual-bindings:
-    name: Multilingual SDK Checks
+    name: Language Binding Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Zig
+        uses: ./.github/actions/setup-zig
 
-      - name: Verify Rust Bindings
-        run: |
-          cd bindings/rust
-          cargo check --verbose
-          cargo test --no-run
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: '24.x'
 
-      - name: Verify TypeScript Bindings
-        run: |
-          cd bindings/js
-          npm ci || npm install
-          npm run build
-
       - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
-
-      - name: Verify C# Bindings
-        run: |
-          cd bindings/csharp
-          dotnet build -c Release
 
       - name: Setup Java (JDK 21)
         uses: actions/setup-java@v5
@@ -120,19 +119,15 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Verify Java Bindings
-        run: |
-          cd bindings/java
-          javac com/hk/HkModel.java
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: 'stable'
           cache: false
 
-      - name: Verify Go Bindings
-        run: |
-          cd bindings/go
-          go vet ./...
-
+      # Builds libhk and libhkjni, writes a fixture through the C ABI, then runs the C, C++, Rust,
+      # Go, C#, Java and TypeScript tests against it.
+      - name: Run binding tests
+        env:
+          HK_BINDINGS_STRICT: '1'
+        run: tests/bindings/run.sh

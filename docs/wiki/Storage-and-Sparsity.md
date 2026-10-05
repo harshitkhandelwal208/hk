@@ -1,117 +1,70 @@
-# Storage Innovations, Sparsity, and Quantization
+# Storage, Sparsity, Sharding and Metadata Editing
 
-In this guide, I cover the storage optimizations I built into HK: lossless hardware structured sparsity, cacheline-aligned 2D tiling, in-place metadata updates, multi-file sharding, and the complementary edge quantization suite.
+> **Status:** this page covers container features. Several are *storage-only*: the file can hold the data and the reader can decode it to f32, but the inference engine does not use it (called out per section). Everything below refers to code in `src/sparsity.zig`, `src/metadata.zig`, `src/reader.zig`, `python/hk/quantization.py`, `python/hk/pruning.py` and `python/hk/torch.py`.
 
 ---
 
-## 1. Lossless NVIDIA Ampere 2:4 Structured Sparsity
+## 1. 2:4 structured sparsity (storage only)
 
-Modern NVIDIA GPUs (Ampere, Ada Lovelace, Hopper, Blackwell) include Sparse Tensor Cores that double matrix multiplication throughput if weight matrices conform to a 2:4 sparsity pattern: exactly 2 out of every 4 consecutive values must be non-zero.
+A 2:4 tensor keeps 2 of every 4 consecutive values (the two largest magnitudes) and zeroes the rest.
 
-### The Problem with Traditional Formats
-Standard formats like SafeTensors and GGUF do not support physical 2:4 sparsity. If you prune weights to 2:4, traditional formats still store the zeros on disk as full 16-bit floats, saving zero disk space and wasting PCIe transfer bandwidth.
+**What exists**
 
-### My Solution in HK: Physical Nibble Packing
-I implemented 2:4 structured sparsity natively in HK:
-- The 2 non-zero 16-bit values are packed contiguously.
-- The positions of the 2 values within each 4-element block are stored as a compact 2-bit nibble index (4 bits per block).
-- Physical Storage: Cuts physical file size by **50% (1.88x physical compression)**.
-- Numerical Accuracy: Unlike quantization, the non-zero weights remain full uncompressed 16-bit floats. There is **0.000000 numerical error** compared to the sparse baseline.
-- Streaming Speed: Native SIMD unpacking kernels stream into memory at over 2.5 GB/s.
+- `sparsity.encodeStructured2_4_F32` / `decodeStructured2_4_F32` pack and unpack it. Payload: `[index metadata: 4 bits per group of 4, padded to 4 bytes][kept values as f32]`. For f32 input this is about 8.5 bytes per group instead of 16, roughly a 47% size reduction. The values themselves are unchanged, so decoding reproduces the pruned tensor bit for bit.
+- The reader decodes `sparse_2_4` (and f32 tensors tagged `structured_2_4`), `sparse_f16`, bitmask-sparse and BSR tensors to dense f32 on request (`HKReader.dequantizeToF32`).
+- Python: `hk.quantization.make_2_4_sparse` (prune, with optional norm-preserving scale correction), `pack_2_4` / `unpack_2_4` (call the native library), and `hk.pruning.prune_structured_2_4(model)` for a whole `nn.Module`.
+
+**What does not exist**
+
+- The inference engine has no sparse kernels. A 2:4 tensor is not read in its packed form during generation, and loading one into the engine is an error (`vecdot.supported` is false). Pruned weights only save disk space unless you decode them.
+- Hardware sparse-tensor-core execution (NVIDIA Ampere+) is not used by anything in this repository. Pruning to 2:4 does not make HK inference faster, and pruning without fine-tuning generally costs accuracy.
 
 ```python
 import torch
-import hk
-from hk.pruning import prune_to_2_4, pack_2_4_sparse
+from hk.quantization import make_2_4_sparse, pack_2_4
 
-# 1. Take a dense weight matrix
-dense_weight = torch.randn(2048, 4096, dtype=torch.bfloat16)
-
-# 2. Prune to 2:4 pattern (picks 2 largest magnitude elements per 4-block)
-sparse_weight, mask = prune_to_2_4(dense_weight)
-
-# 3. Pack into physical nibble storage
-packed = pack_2_4_sparse(sparse_weight)
-print("Original size:", dense_weight.numel() * 2, "bytes")
-print("Packed 2:4 size:", len(packed.data) + len(packed.indices), "bytes")
-# Storage is reduced by ~47-50%
+w = torch.randn(2048, 4096)
+sparse_w, _ = make_2_4_sparse(w)        # keep top-2 magnitudes in each group of 4
+packed = pack_2_4(sparse_w)             # needs the native library
 ```
 
 ---
 
-## 2. 2D Cacheline-Aligned Tiling (`TileLayout`)
+## 2. Tile layouts (declared, not produced)
 
-Standard neural weight formats save 2D matrices in simple row-major order. When executing matrix multiplication on hardware:
-- Accessing elements across columns requires long memory strides.
-- GPU threads in adjacent warp lanes access addresses that span different cachelines, causing shared memory bank conflicts and cacheline thrashing.
-
-I designed HK to allow weight matrices to be serialized in **2D cacheline tiles**:
-- `TileLayout.tile_16x16`: 16x16 elements packed contiguously.
-- `TileLayout.tile_32x16`: 32x16 elements aligned with Tensor Core WMMA instructions.
-- `TileLayout.tile_64x64`: 64x64 tiles for large matrix multiplication on desktop GPUs and multi-threaded CPUs.
-
-Because inner-K dimensions are contiguous inside each tile, data stays resident in L1/L2 processor caches during matrix-vector operations, boosting throughput without changing parameter values.
+The TOC has a `tile_layout` field with values for 16x16, 16x8, 32x16, 32x32 and 64x64 tiles. The converters and writers emit `row_major`, and the engine does not read pre-tiled files: it repacks weights into its own register tiles per thread at run time, directly from the mapped row-major data (see [Hardware and Kernels](Hardware-and-Kernels)). The field exists so other tools can describe a layout; no tiling gain is claimed.
 
 ---
 
-## 3. Microsecond In-Place Metadata Editing
-
-In traditional formats (like SafeTensors or GGUF), the metadata dictionary sits before the tensor data, but the file format does not allocate spare headroom. If you want to change a single character in a chat template or update a model's license tag, you have to rewrite the entire multi-gigabyte file from scratch.
-
-I solved this in HK by pre-allocating an elastic metadata padding zone in the file header.
-
-You can patch metadata in place directly from your command line in microseconds:
+## 3. In-place metadata editing
 
 ```bash
-# Update model version tag
-hk metadata set model.hk general.version "1.1.0"
-
-# Update Jinja2 chat template without rewriting weights
-hk metadata set model.hk tokenizer.chat_template "{% for msg in messages %}..."
+hk metadata list model.hk
+hk metadata get  model.hk general.name
+hk metadata set  model.hk general.version "1.1.0"
 ```
 
-The CLI modifies the bytes in place in less than 5 milliseconds on a 10 GB file.
+`set` infers the type from the value (JSON object/array, `true`/`false`, integer, float, else string), re-serializes the metadata block, and then:
+
+- **If metadata + TOC still fit before the first tensor payload** (the file's alignment padding), it overwrites the header, metadata and TOC in place. Tensor bytes are never touched, so this takes milliseconds regardless of file size. With the default 128-byte alignment there is little spare room (at most 127 bytes beyond the existing metadata), so growing a long value (for example a chat template) often does not fit; files written with 4096-byte or larger alignment have more room.
+- **Otherwise** it appends the new metadata block at the end of the file and points the header at it. The old block stays as dead bytes. This is still fast and does not move weights, but it is refused (`MetadataExceedsPaddingWithAppendix`) if the file already has appendix records, because those run to end of file.
+
+Neither path has been tested for crash safety: the header write and the metadata write are separate operations, so an interruption in between can leave the file inconsistent. Work on a copy for important files.
 
 ---
 
-## 4. Multi-File Sharding (`HeaderFlags.IS_SHARDED`)
+## 4. Multi-file sharding
 
-When distributing 70B+ models across storage boundaries or multi-drive setups, monolithic files can become unwieldy.
-
-I designed HK to provide multi-file sharding natively:
-- Header flag `0x40` signals a sharded container.
-- Each shard contains its own 128-byte header, a local TOC, and a global index manifest (`model.hk.index.json`).
-- Python and native loaders resolve tensor slice pointers across shard boundaries transparently.
-
-```python
-from hk.raw import save_sharded_raw, load_sharded_raw
-
-# Save weights split across shards of maximum 2 GB each
-save_sharded_raw(weights_dict, "./sharded_model", max_shard_size_gb=2.0)
-
-# Load sharded store
-store = load_sharded_raw("./sharded_model")
-print("Total shards mapped:", store.shard_count)
-```
+- Header: `IS_SHARDED` flag, `split_index`, `split_count` (see [Format Specification](Format-Specification)).
+- Python `hk.torch.save_sharded_file(tensors, filename_pattern=..., max_shard_size=...)` splits tensors across files and writes an index manifest (`<name>.hk.index.json`, with a `weight_map` from tensor name to shard file); `load_sharded_file` reads it back.
+- `hk.raw.save_sharded_raw(base_path, shards, ...)` writes caller-supplied shard dicts as `<stem>-00001-of-0000N.hk`; `load_sharded_raw(paths)` merges them.
+- Hugging Face downloads that are sharded safetensors are handled by the converter (see [Downloading Models](Downloading-Models)); the engine itself loads a single `.hk` or `.gguf`.
 
 ---
 
-## 5. Complementary Edge Quantization Suite
+## 5. Quantization formats
 
-While I prioritize zero compute headroom non-quantized storage in HK, I also built an exhaustive suite of quantization schemes for extreme compression on edge devices:
+Which formats the engine can *run* is listed in [Compatibility](Compatibility). Summary:
 
-### Dual-Mode Quantization (NF4 + Residual Delta)
-- Stores a 4-bit non-linear base weight (NF4) for fast low-memory loading.
-- Appends an optional high-precision residual delta stream.
-- In memory-constrained environments, you run pure 4-bit inference.
-- If more memory becomes available, HK applies the residual stream to recover full 16-bit floating point precision (>0.99999 cosine similarity) without reloading the model.
-
-### Super-Block K-Quants (`Q2_K` through `Q8_K`)
-- Uses 256-element super-blocks with hierarchical sub-block scaling factors matching GGUF precision parity.
-- Ideal for running models on low-memory mobile devices or edge boards.
-
-### Vector I-Quants (`IQ1_S` through `IQ4_NL`)
-- Non-linear codebook quantization fitted to Gaussian weight distributions for minimal quantization noise at 1-bit to 3-bit precision.
-
-### Microscaling Formats (MXFP4 & NVFP4)
-- OCP MXFP4 and NVIDIA Blackwell NVFP4 microscaling formats with 32-element micro-block scales for next-generation hardware.
+- **GGUF-compatible formats** (legacy `Q4_0`...`Q8_0`, K-quants `Q2_K`...`Q6_K`, I-quants, `TQ1_0`/`TQ2_0`, `MXFP4`, `NVFP4`): stored byte-for-byte as in GGUF and executed by the engine's integer dot-product kernels. These are the supported inference formats.
+- **HK dual-mode (`dq4`, `dq8`, ...)**: a 4-bit NF4-style base plus an optional residual stream that the reader can add back to approximate the original values (`HKReader.dequantizeToF32(entry, with_residual, out)`). Produced by the Python tools (`quantize_nf4_dual_mode`). Storage and offline use only; the engine does not run them, and no accuracy figure is claimed here.

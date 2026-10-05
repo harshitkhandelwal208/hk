@@ -1,8 +1,29 @@
 const std = @import("std");
 const hk = @import("hk");
+const cli_hub = @import("cli_hub.zig");
+
+/// A model argument is either a path to an .hk file or a hub reference (`owner/name[:quant]`),
+/// which is pulled into the cache first. Caller frees the result.
+fn resolveModel(allocator: std.mem.Allocator, io: std.Io, env: cli_hub.Env, arg: []const u8) ![]u8 {
+    if (std.Io.Dir.cwd().statFile(io, arg, .{})) |_| {
+        return allocator.dupe(u8, arg);
+    } else |_| {}
+    if (cli_hub.Spec.looksLikeRepo(arg)) {
+        return cli_hub.pullSpec(allocator, io, env, cli_hub.Spec.parse(arg), false, "main");
+    }
+    std.debug.print("Error: '{s}' is not a file and does not look like a hub repository (owner/name)\n", .{arg});
+    return error.FileNotFound;
+}
+
+/// The process environment, kept for code that has no `init` at hand (std.c.getenv is unavailable
+/// without libc, for instance on Windows).
+var g_env: ?cli_hub.Env = null;
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
+    const env = cli_hub.Env{ .map = init.environ_map };
+    g_env = env;
+    const io = init.io;
 
     var it = try std.process.Args.Iterator.initAllocator(init.minimal.args, allocator);
     defer it.deinit();
@@ -14,128 +35,116 @@ pub fn main(init: std.process.Init) !void {
         return;
     };
 
-    if (std.mem.eql(u8, command, "run")) {
-        const file_path = it.next() orelse {
-            std.debug.print("Error: Missing file path for 'run'\nUsage: hk run <model.hk> [-p \"prompt\"] [-n 128] [-ngl 32] [--temp 0.7]\n", .{});
-            return;
+    if (std.mem.eql(u8, command, "pull")) {
+        try cli_hub.cmdPull(allocator, io, env, &it);
+    } else if (std.mem.eql(u8, command, "search")) {
+        try cli_hub.cmdSearch(allocator, io, env, &it);
+    } else if (std.mem.eql(u8, command, "list")) {
+        try cli_hub.cmdList(allocator, io, env);
+    } else if (std.mem.eql(u8, command, "rm")) {
+        try cli_hub.cmdRm(allocator, io, env, &it);
+    } else if (std.mem.eql(u8, command, "serve")) {
+        try cmdServe(allocator, io, env, &it);
+    } else if (std.mem.eql(u8, command, "run")) {
+        const file_path_arg = it.next() orelse {
+            std.debug.print("Error: Missing model for 'run'\n{s}", .{usage_gen});
+            return error.BadUsage;
         };
-        var prompt_opt: ?[]const u8 = null;
-        var max_tokens: usize = 128;
-        var gpu_layers: ?usize = null;
-        var params = hk.sampling.SamplingParams{};
-
-        while (it.next()) |flag| {
-            if (std.mem.eql(u8, flag, "-p") or std.mem.eql(u8, flag, "--prompt")) {
-                prompt_opt = it.next();
-            } else if (std.mem.eql(u8, flag, "-n") or std.mem.eql(u8, flag, "--max-tokens")) {
-                const val_str = it.next() orelse break;
-                max_tokens = std.fmt.parseInt(usize, val_str, 10) catch 128;
-            } else if (std.mem.eql(u8, flag, "-ngl") or std.mem.eql(u8, flag, "--gpu-layers")) {
-                const val_str = it.next() orelse break;
-                gpu_layers = std.fmt.parseInt(usize, val_str, 10) catch null;
-            } else if (std.mem.eql(u8, flag, "--temp")) {
-                const val_str = it.next() orelse break;
-                params.temperature = std.fmt.parseFloat(f32, val_str) catch 0.7;
-            } else if (std.mem.eql(u8, flag, "--top-p")) {
-                const val_str = it.next() orelse break;
-                params.top_p = std.fmt.parseFloat(f32, val_str) catch 0.9;
-            } else if (std.mem.eql(u8, flag, "--top-k")) {
-                const val_str = it.next() orelse break;
-                params.top_k = std.fmt.parseInt(usize, val_str, 10) catch 40;
-            } else if (std.mem.eql(u8, flag, "--min-p")) {
-                const val_str = it.next() orelse break;
-                params.min_p = std.fmt.parseFloat(f32, val_str) catch 0.05;
-            } else if (std.mem.eql(u8, flag, "--rep-pen")) {
-                const val_str = it.next() orelse break;
-                params.repetition_penalty = std.fmt.parseFloat(f32, val_str) catch 1.1;
-            }
+        if (isHelp(file_path_arg)) {
+            std.debug.print("{s}", .{usage_gen});
+            return;
         }
-        try cmdRun(file_path, prompt_opt, max_tokens, params, gpu_layers, allocator);
+        // Check every flag before resolving the model, so a typo never starts a download.
+        const g = try parseGenArgs(&it, .run);
+        const file_path = try resolveModel(allocator, io, env, file_path_arg);
+        defer allocator.free(file_path);
+        try cmdRun(file_path, g, allocator);
     } else if (std.mem.eql(u8, command, "chat")) {
-        const file_path = it.next() orelse {
-            std.debug.print("Error: Missing file path for 'chat'\nUsage: hk chat <model.hk> [-ngl 32] [--temp 0.7]\n", .{});
-            return;
+        const file_path_arg = it.next() orelse {
+            std.debug.print("Error: Missing model for 'chat'\n{s}", .{usage_gen});
+            return error.BadUsage;
         };
-        var params = hk.sampling.SamplingParams{};
-        var gpu_layers: ?usize = null;
-        while (it.next()) |flag| {
-            if (std.mem.eql(u8, flag, "-ngl") or std.mem.eql(u8, flag, "--gpu-layers")) {
-                const val_str = it.next() orelse break;
-                gpu_layers = std.fmt.parseInt(usize, val_str, 10) catch null;
-            } else if (std.mem.eql(u8, flag, "--temp")) {
-                const val_str = it.next() orelse break;
-                params.temperature = std.fmt.parseFloat(f32, val_str) catch 0.7;
-            }
+        if (isHelp(file_path_arg)) {
+            std.debug.print("{s}", .{usage_gen});
+            return;
         }
-        try cmdChat(file_path, params, gpu_layers, allocator);
+        const g = try parseGenArgs(&it, .chat);
+        const file_path = try resolveModel(allocator, io, env, file_path_arg);
+        defer allocator.free(file_path);
+        try cmdChat(file_path, g, allocator);
     } else if (std.mem.eql(u8, command, "tokenize")) {
         const file_path = it.next() orelse {
             std.debug.print("Error: Missing file path for 'tokenize'\nUsage: hk tokenize <model.hk> \"text\"\n", .{});
-            return;
+            return error.BadUsage;
         };
-        const text = it.next() orelse "Hello world";
+        const text = it.next() orelse {
+            std.debug.print("Error: Missing text for 'tokenize'\nUsage: hk tokenize <model.hk> \"text\"\n", .{});
+            return error.BadUsage;
+        };
         try cmdTokenize(file_path, text, allocator);
     } else if (std.mem.eql(u8, command, "detokenize")) {
         const file_path = it.next() orelse {
             std.debug.print("Error: Missing file path for 'detokenize'\nUsage: hk detokenize <model.hk> <id1> <id2> ...\n", .{});
-            return;
+            return error.BadUsage;
         };
         var id_list: std.ArrayList(u32) = .empty;
         defer id_list.deinit(allocator);
         while (it.next()) |arg| {
-            if (std.fmt.parseInt(u32, arg, 10)) |id| {
-                try id_list.append(allocator, id);
-            } else |_| {}
+            const id = std.fmt.parseInt(u32, arg, 10) catch {
+                std.debug.print("Error: '{s}' is not a token id\n", .{arg});
+                return error.BadUsage;
+            };
+            try id_list.append(allocator, id);
         }
         try cmdDetokenize(file_path, id_list.items, allocator);
     } else if (std.mem.eql(u8, command, "convert-safetensors")) {
         const in_path = it.next() orelse {
             std.debug.print("Error: Missing input path for 'convert-safetensors'\nUsage: hk convert-safetensors <model.safetensors> <out.hk> [f32|q4_0|q8_0]\n", .{});
-            return;
+            return error.BadUsage;
         };
         const out_path = it.next() orelse {
             std.debug.print("Error: Missing output path for 'convert-safetensors'\nUsage: hk convert-safetensors <model.safetensors> <out.hk> [f32|q4_0|q8_0]\n", .{});
-            return;
+            return error.BadUsage;
         };
         const target_st_str = it.next() orelse "f32";
         try cmdConvertSafeTensors(in_path, out_path, target_st_str, allocator);
     } else if (std.mem.eql(u8, command, "inspect")) {
         const file_path = it.next() orelse {
             std.debug.print("Error: Missing file path for 'inspect'\nUsage: hk inspect <model.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         try cmdInspect(file_path, allocator);
     } else if (std.mem.eql(u8, command, "verify")) {
         const file_path = it.next() orelse {
             std.debug.print("Error: Missing file path for 'verify'\nUsage: hk verify <model.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         try cmdVerify(file_path, allocator);
     } else if (std.mem.eql(u8, command, "benchmark")) {
         const file_path = it.next() orelse {
             std.debug.print("Error: Missing file path for 'benchmark'\nUsage: hk benchmark <model.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         try cmdBenchmark(file_path, allocator);
     } else if (std.mem.eql(u8, command, "retile")) {
         const input_path = it.next() orelse {
             std.debug.print("Error: Missing input path for 'retile'\nUsage: hk retile <in.hk> <out.hk> [tile_16x16|row_major]\n", .{});
-            return;
+            return error.BadUsage;
         };
         const output_path = it.next() orelse {
             std.debug.print("Error: Missing output path for 'retile'\nUsage: hk retile <in.hk> <out.hk> [tile_16x16|row_major]\n", .{});
-            return;
+            return error.BadUsage;
         };
         const target_layout_str = it.next() orelse "tile_16x16";
         try cmdRetile(input_path, output_path, target_layout_str, allocator);
     } else if (std.mem.eql(u8, command, "prune")) {
         const input_path = it.next() orelse {
             std.debug.print("Error: Missing input path for 'prune'\nUsage: hk prune <in.hk> <out.hk> [ratio, e.g. 0.5]\n", .{});
-            return;
+            return error.BadUsage;
         };
         const output_path = it.next() orelse {
             std.debug.print("Error: Missing output path for 'prune'\nUsage: hk prune <in.hk> <out.hk> [ratio, e.g. 0.5]\n", .{});
-            return;
+            return error.BadUsage;
         };
         const ratio_str = it.next() orelse "0.5";
         const ratio = std.fmt.parseFloat(f32, ratio_str) catch 0.5;
@@ -143,11 +152,11 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, command, "expand")) {
         const input_path = it.next() orelse {
             std.debug.print("Error: Missing input path for 'expand'\nUsage: hk expand <in.hk> <out.hk> [--vocab <N>] [--width <ratio>]\n", .{});
-            return;
+            return error.BadUsage;
         };
         const output_path = it.next() orelse {
             std.debug.print("Error: Missing output path for 'expand'\nUsage: hk expand <in.hk> <out.hk> [--vocab <N>] [--width <ratio>]\n", .{});
-            return;
+            return error.BadUsage;
         };
         var new_vocab_opt: ?usize = null;
         var width_ratio_opt: ?f32 = null;
@@ -165,19 +174,19 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, command, "eval")) {
         const file_path = it.next() orelse {
             std.debug.print("Error: Missing file path for 'eval'\nUsage: hk eval <model.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         try cmdEval(file_path, allocator);
     } else if (std.mem.eql(u8, command, "appendix")) {
         const file_path = it.next() orelse {
             std.debug.print("Error: Missing file path for 'appendix'\nUsage: hk appendix <model.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         try cmdAppendix(file_path, allocator);
     } else if (std.mem.eql(u8, command, "rollback")) {
         const file_path = it.next() orelse {
             std.debug.print("Error: Missing file path for 'rollback'\nUsage: hk rollback <model.hk> [generation]\n", .{});
-            return;
+            return error.BadUsage;
         };
         const gen_str = it.next() orelse "0";
         const target_gen = std.fmt.parseInt(u32, gen_str, 10) catch 0;
@@ -185,36 +194,36 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, command, "metadata")) {
         const sub_cmd = it.next() orelse {
             std.debug.print("Error: Missing subcommand for 'metadata'\nUsage: hk metadata <set|get|list> <file.hk> [key] [val]\n", .{});
-            return;
+            return error.BadUsage;
         };
         if (std.mem.eql(u8, sub_cmd, "set")) {
             const file_path = it.next() orelse {
                 std.debug.print("Error: Missing file path for 'metadata set'\nUsage: hk metadata set <file.hk> <key> <val>\n", .{});
-                return;
+                return error.BadUsage;
             };
             const key = it.next() orelse {
                 std.debug.print("Error: Missing key for 'metadata set'\nUsage: hk metadata set <file.hk> <key> <val>\n", .{});
-                return;
+                return error.BadUsage;
             };
             const val = it.next() orelse {
                 std.debug.print("Error: Missing value for 'metadata set'\nUsage: hk metadata set <file.hk> <key> <val>\n", .{});
-                return;
+                return error.BadUsage;
             };
             try cmdMetadataSet(file_path, key, val, allocator);
         } else if (std.mem.eql(u8, sub_cmd, "get")) {
             const file_path = it.next() orelse {
                 std.debug.print("Error: Missing file path for 'metadata get'\nUsage: hk metadata get <file.hk> <key>\n", .{});
-                return;
+                return error.BadUsage;
             };
             const key = it.next() orelse {
                 std.debug.print("Error: Missing key for 'metadata get'\nUsage: hk metadata get <file.hk> <key>\n", .{});
-                return;
+                return error.BadUsage;
             };
             try cmdMetadataGet(file_path, key, allocator);
         } else if (std.mem.eql(u8, sub_cmd, "list")) {
             const file_path = it.next() orelse {
                 std.debug.print("Error: Missing file path for 'metadata list'\nUsage: hk metadata list <file.hk>\n", .{});
-                return;
+                return error.BadUsage;
             };
             try cmdMetadataList(file_path, allocator);
         } else {
@@ -223,33 +232,33 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, command, "dump")) {
         const file_path = it.next() orelse {
             std.debug.print("Error: Missing file path for 'dump'\nUsage: hk dump <model.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         try cmdDump(file_path, allocator);
     } else if (std.mem.eql(u8, command, "hash")) {
         const file_path = it.next() orelse {
             std.debug.print("Error: Missing file path for 'hash'\nUsage: hk hash <model.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         try cmdHash(file_path, allocator);
     } else if (std.mem.eql(u8, command, "convert-endian")) {
         const input_path = it.next() orelse {
             std.debug.print("Error: Missing input path for 'convert-endian'\nUsage: hk convert-endian <in.hk> <out.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         const output_path = it.next() orelse {
             std.debug.print("Error: Missing output path for 'convert-endian'\nUsage: hk convert-endian <in.hk> <out.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         try cmdConvertEndian(input_path, output_path, allocator);
     } else if (std.mem.eql(u8, command, "convert-gguf")) {
         const input_path = it.next() orelse {
             std.debug.print("Error: Missing input path for 'convert-gguf'\nUsage: hk convert-gguf <in.gguf> <out.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         const output_path = it.next() orelse {
             std.debug.print("Error: Missing output path for 'convert-gguf'\nUsage: hk convert-gguf <in.gguf> <out.hk>\n", .{});
-            return;
+            return error.BadUsage;
         };
         try cmdConvertGGUF(input_path, output_path, allocator);
     } else if (std.mem.eql(u8, command, "export")) {
@@ -269,7 +278,7 @@ pub fn main(init: std.process.Init) !void {
 
         if (in_path_opt == null or out_path_opt == null) {
             std.debug.print("Error: Missing arguments for 'export'\nUsage: hk export -f <gguf|safetensors> <in.hk> <out_file>\n", .{});
-            return;
+            return error.BadUsage;
         }
 
         try cmdExport(format_str, in_path_opt.?, out_path_opt.?, allocator);
@@ -277,23 +286,29 @@ pub fn main(init: std.process.Init) !void {
         const file_path_opt = it.next();
         try cmdGui(file_path_opt, allocator);
     } else if (std.mem.eql(u8, command, "hardware-profile")) {
-        try cmdHardwareProfile();
+        try cmdHardwareProfile(allocator);
     } else if (std.mem.eql(u8, command, "help") or std.mem.eql(u8, command, "--help")) {
         printUsage();
     } else {
         std.debug.print("Unknown command: {s}\n", .{command});
         printUsage();
+        return error.BadUsage;
     }
 }
 
 fn printUsage() void {
     std.debug.print(
-        \\HK (Neural Tensor Format) CLI v1.0.0
+        \\HK CLI v1.2.0
         \\Usage: hk <command> [arguments]
         \\
         \\Commands:
-        \\  run            <file.hk> [-p "text"] [-n N]  Standalone native LLM text generation with token streaming
-        \\  chat           <file.hk> [--temp T]          Interactive conversational REPL directly in terminal
+        \\  pull           <owner/name>[:quant]          Download a model from the Hub straight into .hk
+        \\  search         <query> [--limit N] [--all]   Search the Hub (GGUF models by default)
+        \\  list                                         Show cached models
+        \\  rm             <owner/name>                  Remove a cached model
+        \\  serve          <model> [--port N] [--slots N] OpenAI compatible server
+        \\  run            <file.hk | owner/name[:quant]> [-p "text"] [-n N]  Generate text
+        \\  chat           <file.hk | owner/name[:quant]> [--temp T]          Interactive chat
         \\  tokenize       <file.hk> "text"              Tokenize input text using in-container vocabulary
         \\  detokenize     <file.hk> <id1> <id2> ...     Reconstruct text from token ID sequence
         \\  convert-safetensors <in.safetensors> <out.hk> Zero-dependency native SafeTensors transcoding
@@ -319,57 +334,79 @@ fn printUsage() void {
     , .{});
 }
 
-fn cmdHardwareProfile() !void {
+fn cmdHardwareProfile(allocator: std.mem.Allocator) !void {
+    const builtin = @import("builtin");
     const caps = hk.platform.detectHardwareCapabilities();
+    const io = std.Options.debug_io;
+    const logical = std.Thread.getCpuCount() catch 1;
     std.debug.print(
-        \\============================================================
-        \\HK Hardware Capabilities & Architecture Profiler
-        \\============================================================
-        \\CPU Vendor            : {s}
-        \\AVX2 SIMD             : {}
-        \\AVX-512 Foundation    : {}
-        \\AVX-512 / AVX-VNNI    : {}
-        \\Intel AMX Matrix Accel: {}
-        \\ARM NEON Vector       : {}
-        \\ARM SVE / SVE2        : {}
-        \\Apple Silicon Unified : {}
-        \\AMD ROCm Ready        : {}
-        \\Intel NPU Ready       : {}
-        \\Optimal Page Alignment: {} Bytes ({s})
-        \\Direct DMA Hugepage   : {} Bytes (64 KB)
-        \\Tensor Core Coalescing: 100% Guaranteed (Divisible by 128)
-        \\============================================================
+        \\hk hardware profile
+        \\  architecture      : {s} ({s})
+        \\  cpu vendor        : {s}
+        \\  cores             : {d} used for compute, {d} logical
+        \\  vector features   : AVX2 {s}, AVX-512 {s}, VNNI {s}, AMX {s}, NEON {s}, SVE {s}
+        \\  kernels in use    : {s}
+        \\  kernels built     : {s}
+        \\  page alignment    : {d} bytes (what `.hk` files written here use)
         \\
     , .{
+        @tagName(builtin.cpu.arch),
+        @tagName(builtin.os.tag),
         switch (caps.vendor) {
-            .intel => "Intel Corporation",
-            .amd => "Advanced Micro Devices (AMD)",
-            .arm => "ARM Architecture",
-            .apple => "Apple Silicon (M-Series)",
-            .unknown => "Generic Architecture",
+            .intel => "Intel",
+            .amd => "AMD",
+            .arm => "ARM",
+            .apple => "Apple",
+            .unknown => "unknown",
         },
-        caps.has_avx2,
-        caps.has_avx512f,
-        caps.has_avx512vnni or caps.has_avx_vnni,
-        caps.has_amx,
-        caps.has_arm_neon,
-        caps.has_arm_sve,
-        caps.is_apple_silicon,
-        caps.has_rocm_ready,
-        caps.has_npu_ready,
+        hk.cores.physicalCores(io),
+        logical,
+        yn(caps.has_avx2),
+        yn(caps.has_avx512f),
+        yn(caps.has_avx512vnni or caps.has_avx_vnni),
+        yn(caps.has_amx),
+        yn(caps.has_arm_neon),
+        yn(caps.has_arm_sve),
+        hk.kernels.get().name,
+        hk.build_options_kernel_levels,
         caps.optimal_page_alignment,
-        if (caps.optimal_page_alignment == 16384) "16KB Apple Metal Zero-Copy" else "4KB Universal Super-Coalesced",
-        caps.dma_hugepage_alignment,
     });
+    if (hk.vk.Context.init(allocator, null)) |ctx_val| {
+        var ctx = ctx_val;
+        defer ctx.deinit();
+        std.debug.print("  gpu               : Vulkan device {s} ({d} MiB, subgroup {d})\n", .{
+            ctx.caps.deviceName(),
+            ctx.caps.device_local_bytes >> 20,
+            ctx.caps.subgroup_size,
+        });
+    } else |e| {
+        std.debug.print("  gpu               : no usable Vulkan device ({s})\n", .{@errorName(e)});
+    }
+}
+
+fn yn(b: bool) []const u8 {
+    return if (b) "yes" else "no";
+}
+
+fn convertProgress(ctx: ?*anyopaque, done: u64, total: u64) void {
+    _ = ctx;
+    const pct = if (total == 0) 100 else done * 100 / total;
+    std.debug.print("\r[HK] converting: {d}% ({d} / {d} MiB)", .{ pct, done >> 20, total >> 20 });
 }
 
 fn cmdConvertGGUF(input_path: []const u8, output_path: []const u8, allocator: std.mem.Allocator) !void {
-    std.debug.print("[HK] Ingesting GGUF container: {s}\n", .{input_path});
-    hk.gguf.convertGGUFToHK(input_path, output_path, allocator) catch |err| {
-        std.debug.print("Error: Failed to convert GGUF to HK: {}\n", .{err});
-        return;
+    std.debug.print("[HK] Converting GGUF: {s}\n", .{input_path});
+    var diag = hk.convert.gguf.Diag{};
+    hk.convert.gguf.convertFile(allocator, std.Options.debug_io, input_path, output_path, .{
+        .progress = convertProgress,
+        .diag = &diag,
+    }) catch |err| {
+        std.debug.print("\nError: conversion failed: {s}", .{@errorName(err)});
+        if (diag.len > 0) std.debug.print(": {s}", .{diag.message()});
+        std.debug.print("\n", .{});
+        return err;
     };
-    std.debug.print("[HK] Successfully ingested GGUF to HK -> {s}\n", .{output_path});
+    std.debug.print("\n[HK] Wrote {s}\n", .{output_path});
 }
 
 fn cmdExport(fmt: []const u8, input_path: []const u8, output_path: []const u8, allocator: std.mem.Allocator) !void {
@@ -380,8 +417,20 @@ fn cmdExport(fmt: []const u8, input_path: []const u8, output_path: []const u8, a
             return;
         };
         std.debug.print("[HK] Successfully exported to GGUF -> {s}\n", .{output_path});
+    } else if (std.mem.eql(u8, fmt, "safetensors")) {
+        std.debug.print("[HK] Exporting HK model to safetensors: {s}\n", .{output_path});
+        var reader = hk.HKReader.open(input_path, allocator) catch |err| {
+            std.debug.print("Error: cannot open '{s}': {s}\n", .{ input_path, @errorName(err) });
+            return;
+        };
+        defer reader.deinit();
+        hk.convert.safetensors_out.exportFile(allocator, std.Options.debug_io, &reader, output_path) catch |err| {
+            std.debug.print("Error: export failed: {s}\n", .{@errorName(err)});
+            return;
+        };
+        std.debug.print("[HK] Wrote {s} (quantized tensors are stored as F16)\n", .{output_path});
     } else {
-        std.debug.print("Error: Unsupported export format '{s}'. Supported: gguf\n", .{fmt});
+        std.debug.print("Error: Unsupported export format '{s}'. Supported: gguf, safetensors\n", .{fmt});
     }
 }
 
@@ -959,6 +1008,18 @@ fn cmdExpand(
     var reader = try hk.HKReader.open(in_path, allocator);
     defer reader.deinit();
 
+    // Expansion decodes every tensor to f32 and writes it back, which is only lossless for float
+    // models. Refuse quantized input instead of silently changing what the tensors mean.
+    for (reader.toc.entries.items) |e| {
+        switch (e.storage_type) {
+            .f32, .f16, .bf16 => {},
+            else => {
+                std.debug.print("Error: '{s}' is stored as {s}. `hk expand` works on f32, f16 and bf16 models; convert a float checkpoint (for example with `hk convert-safetensors`) first.\n", .{ e.name, @tagName(e.storage_type) });
+                return error.UnsupportedStorage;
+            },
+        }
+    }
+
     var writer = hk.HKWriter.init(allocator);
     defer writer.deinit();
 
@@ -969,7 +1030,8 @@ fn cmdExpand(
             .val_int64 => |v| try writer.addMetadataInt(m.key, v),
             .val_float64 => |f| try writer.addMetadataFloat(m.key, f),
             .val_bool => |b| try writer.addMetadataBool(m.key, b),
-            else => {},
+            .val_json => |j| try writer.addMetadataJson(m.key, j),
+            .val_bytes => {},
         }
     }
 
@@ -1133,9 +1195,10 @@ fn cmdExpand(
 
         // If not modified, write existing tensor
         if (!is_expanded) {
+            // dense_old holds decoded f32, so the copy is stored as f32 whatever the input type was.
             try writer.addTensor(.{
                 .name = e.name,
-                .storage_type = e.storage_type,
+                .storage_type = .f32,
                 .tile_layout = e.tile_layout,
                 .sparsity_type = e.sparsity_type,
                 .ndim = e.ndim,
@@ -1147,9 +1210,13 @@ fn cmdExpand(
     }
 
     try writer.writeToFile(out_path);
-    std.debug.print("\n[SUCCESS] Expansion complete! {} tensors expanded natively. Output saved to '{s}'.\n\n", .{
-        expanded_count, out_path,
-    });
+    if (expanded_count == 0) {
+        std.debug.print("\n[WARNING] No tensor matched, so '{s}' is a copy of the input. Expansion looks for Hugging Face style names (model.embed_tokens.weight, mlp.gate_proj.weight and so on); a model converted from GGUF uses GGUF names.\n\n", .{out_path});
+    } else {
+        std.debug.print("\n[SUCCESS] Expansion complete! {} tensors expanded natively. Output saved to '{s}'.\n\n", .{
+            expanded_count, out_path,
+        });
+    }
 }
 
 fn cmdDump(path: []const u8, allocator: std.mem.Allocator) !void {
@@ -1403,261 +1470,547 @@ fn cmdGui(file_path_opt: ?[]const u8, allocator: std.mem.Allocator) !void {
     }
 }
 
-fn cmdRun(
-    model_path: []const u8,
-    prompt_opt: ?[]const u8,
-    max_tokens: usize,
-    params: hk.sampling.SamplingParams,
-    gpu_layers: ?usize,
-    allocator: std.mem.Allocator,
-) !void {
-    const prompt = prompt_opt orelse "Hello! Tell me who you are and what you can do.";
+const Loaded = struct {
+    reader: hk.HKReader,
+    tok: hk.tokenizer.Tokenizer,
+    model: hk.engine.Model,
+    template: ?hk.chat.ChatTemplate = null,
 
-    std.debug.print("Loading model: {s}...\n", .{model_path});
-    var reader = hk.HKReader.open(model_path, allocator) catch |err| {
-        std.debug.print("Error opening model: {}\n", .{err});
-        return;
-    };
-    defer reader.deinit();
-
-    var tok = hk.tokenizer.Tokenizer.init(allocator);
-    defer tok.deinit();
-    tok.loadFromMetadata(&reader.metadata_map) catch {};
-
-    std.debug.print("Initializing native inference engine...\n", .{});
-    var engine = hk.inference.TransformerEngine.initFromReaderWithOptions(allocator, &reader, .{ .gpu_layers = gpu_layers }) catch |err| {
-        std.debug.print("Error initializing transformer engine: {}\n", .{err});
-        return;
-    };
-    defer {
-        engine.deinit();
-        allocator.destroy(engine);
-    }
-
-    if (engine.n_gpu_layers > 0) {
-        std.debug.print("Device offload active: {}/{} layers offloaded to GPU\n", .{ engine.n_gpu_layers, engine.config.n_layers });
-    } else {
-        std.debug.print("Running on CPU: {} layers\n", .{engine.config.n_layers});
-    }
-
-    var prompt_tokens: std.ArrayList(u32) = .empty;
-    defer prompt_tokens.deinit(allocator);
-    try tok.encode(prompt, true, false, &prompt_tokens);
-
-    if (prompt_tokens.items.len == 0) {
-        std.debug.print("Error: Prompt produced 0 tokens.\n", .{});
-        return;
-    }
-
-    std.debug.print("Prefilling {} prompt tokens...\n", .{prompt_tokens.items.len});
-
-    var sampler = hk.sampling.Sampler.init(params.seed);
-    var pos: usize = 0;
-    var last_logits: []const f32 = &[_]f32{};
-
-    const io = std.Options.debug_io;
-
-    while (pos < prompt_tokens.items.len) : (pos += 1) {
-        last_logits = engine.forward(prompt_tokens.items[pos], pos);
-    }
-
-    var history: std.ArrayList(u32) = .empty;
-    defer history.deinit(allocator);
-    try history.appendSlice(allocator, prompt_tokens.items);
-
-    std.debug.print("\nResponse:\n", .{});
-
-    const logits_buf = try allocator.alloc(f32, engine.config.vocab_size);
-    defer allocator.free(logits_buf);
-
-    var token_text: std.ArrayList(u8) = .empty;
-    defer token_text.deinit(allocator);
-
-    const gen_start_time = std.Io.Timestamp.now(io, .awake);
-
-    var gen_count: usize = 0;
-    while (gen_count < max_tokens) : (gen_count += 1) {
-        if (pos >= engine.config.max_seq_len) break;
-
-        const copy_len = @min(logits_buf.len, last_logits.len);
-        @memcpy(logits_buf[0..copy_len], last_logits[0..copy_len]);
-
-        const next_token = try sampler.sample(allocator, logits_buf[0..copy_len], params, history.items);
-        if (tok.eos_id != null and next_token == tok.eos_id.?) break;
-
-        token_text.clearRetainingCapacity();
-        try tok.decode(&.{next_token}, false, &token_text);
-
-        std.debug.print("{s}", .{token_text.items});
-
-        try history.append(allocator, next_token);
-        last_logits = engine.forward(next_token, pos);
-        pos += 1;
-    }
-
-    const end_time = std.Io.Timestamp.now(io, .awake);
-    const duration_ns = end_time.nanoseconds - gen_start_time.nanoseconds;
-    const duration_ms = @max(@divTrunc(duration_ns, 1_000_000), 1);
-    const tok_per_sec = (@as(f64, @floatFromInt(gen_count)) * 1000.0) / @as(f64, @floatFromInt(duration_ms));
-
-    std.debug.print("\n\n[Done: generated {} tokens in {} ms ({d:.2} tok/s)]\n", .{ gen_count, duration_ms, tok_per_sec });
-}
-
-fn cmdChat(
-    model_path: []const u8,
-    params: hk.sampling.SamplingParams,
-    gpu_layers: ?usize,
-    allocator: std.mem.Allocator,
-) !void {
-    std.debug.print("Loading model: {s}...\n", .{model_path});
-    var reader = hk.HKReader.open(model_path, allocator) catch |err| {
-        std.debug.print("Error opening model: {}\n", .{err});
-        return;
-    };
-    defer reader.deinit();
-
-    var tok = hk.tokenizer.Tokenizer.init(allocator);
-    defer tok.deinit();
-    tok.loadFromMetadata(&reader.metadata_map) catch {};
-
-    var engine = hk.inference.TransformerEngine.initFromReaderWithOptions(allocator, &reader, .{ .gpu_layers = gpu_layers }) catch |err| {
-        std.debug.print("Error initializing transformer engine: {}\n", .{err});
-        return;
-    };
-    defer {
-        engine.deinit();
-        allocator.destroy(engine);
-    }
-
-    if (engine.n_gpu_layers > 0) {
-        std.debug.print("Device offload active: {}/{} layers offloaded to GPU\n", .{ engine.n_gpu_layers, engine.config.n_layers });
-    } else {
-        std.debug.print("Running on CPU: {} layers\n", .{engine.config.n_layers});
-    }
-
-    std.debug.print("HK Chat REPL (Interactive Native Zig Transformer Inference)\nType 'exit' or 'quit' to end.\n\n", .{});
-
-    var messages: std.ArrayList(hk.tokenizer.ChatMessage) = .empty;
-    defer {
-        for (messages.items) |m| allocator.free(m.content);
-        messages.deinit(allocator);
-    }
-
-    var sampler = hk.sampling.Sampler.init(params.seed);
-    var pos: usize = 0;
-    var history: std.ArrayList(u32) = .empty;
-    defer history.deinit(allocator);
-
-    const io = std.Options.debug_io;
-    var in_file = std.Io.File.stdin();
-
-    while (true) {
-        std.debug.print(">>> ", .{});
-        var line_buf: [4096]u8 = undefined;
-        var line_len: usize = 0;
-
-        while (line_len < line_buf.len) {
-            var b: [1]u8 = undefined;
-            var s = [_][]u8{&b};
-            const n = in_file.readStreaming(io, &s) catch 0;
-            if (n == 0) break;
-            if (b[0] == '\n') break;
-            if (b[0] != '\r') {
-                line_buf[line_len] = b[0];
-                line_len += 1;
+    fn open(allocator: std.mem.Allocator, path: []const u8, opts: hk.engine.Options) !*Loaded {
+        const l = try allocator.create(Loaded);
+        errdefer allocator.destroy(l);
+        l.reader = hk.HKReader.open(path, allocator) catch |err| {
+            std.debug.print("Error: cannot open '{s}': {s}\n", .{ path, @errorName(err) });
+            return err;
+        };
+        errdefer l.reader.deinit();
+        var tdiag = hk.tokenizer.Diag{};
+        l.tok = hk.tokenizer.Tokenizer.fromMetadata(allocator, &l.reader.metadata_map, &tdiag) catch |err| {
+            std.debug.print("Error: tokenizer: {s}\n", .{tdiag.message()});
+            return err;
+        };
+        errdefer l.tok.deinit();
+        var diag = hk.engine.Diag{};
+        l.model = hk.engine.Model.init(allocator, &l.reader, opts, &diag) catch |err| {
+            std.debug.print("Error: cannot load model: {s}\n", .{diag.message()});
+            return err;
+        };
+        errdefer l.model.deinit();
+        if (opts.gpu != .off) {
+            if (l.model.gpu) |g| {
+                std.debug.print("[gpu] running on {s} (Vulkan)\n", .{g.deviceName()});
+            } else {
+                std.debug.print("[gpu] not used: {s}; running on the CPU\n", .{l.model.gpu_note orelse "unknown reason"});
             }
         }
-
-        const input_line = std.mem.trim(u8, line_buf[0..line_len], " \t\r\n");
-        if (input_line.len == 0) continue;
-        if (std.mem.eql(u8, input_line, "exit") or std.mem.eql(u8, input_line, "quit")) break;
-
-        const user_content = try allocator.dupe(u8, input_line);
-        try messages.append(allocator, .{ .role = .user, .content = user_content });
-
-        var prompt_str: std.ArrayList(u8) = .empty;
-        defer prompt_str.deinit(allocator);
-        try tok.formatChat(.chatml, messages.items, true, &prompt_str);
-
-        var prompt_tokens: std.ArrayList(u32) = .empty;
-        defer prompt_tokens.deinit(allocator);
-        try tok.encode(prompt_str.items, true, false, &prompt_tokens);
-
-        // Advance through any new prompt tokens
-        var last_logits: []const f32 = &[_]f32{};
-        while (pos < prompt_tokens.items.len) : (pos += 1) {
-            last_logits = engine.forward(prompt_tokens.items[pos], pos);
+        l.template = null;
+        if (l.tok.chat_template) |src| {
+            var jd = hk.chat.jinja.Diag{};
+            const bos = if (l.tok.bos) |b| l.tok.piece(b) else "";
+            const eos = if (l.tok.eos) |e| l.tok.piece(e) else "";
+            if (hk.chat.ChatTemplate.init(allocator, src, bos, eos, &jd)) |t| {
+                l.template = t;
+            } else |_| {
+                std.debug.print("Note: this model's chat template could not be parsed ({s}); using a plain transcript.\n", .{jd.message()});
+            }
         }
-
-        std.debug.print("HK: ", .{});
-        var answer_tokens: std.ArrayList(u8) = .empty;
-        defer answer_tokens.deinit(allocator);
-
-        const logits_buf = try allocator.alloc(f32, engine.config.vocab_size);
-        defer allocator.free(logits_buf);
-
-        var token_text: std.ArrayList(u8) = .empty;
-        defer token_text.deinit(allocator);
-
-        var gen_count: usize = 0;
-        while (gen_count < 512 and pos < engine.config.max_seq_len) : (gen_count += 1) {
-            const copy_len = @min(logits_buf.len, last_logits.len);
-            @memcpy(logits_buf[0..copy_len], last_logits[0..copy_len]);
-
-            const next_token = try sampler.sample(allocator, logits_buf[0..copy_len], params, history.items);
-            if (tok.eos_id != null and next_token == tok.eos_id.?) break;
-
-            token_text.clearRetainingCapacity();
-            try tok.decode(&.{next_token}, false, &token_text);
-
-            std.debug.print("{s}", .{token_text.items});
-            try answer_tokens.appendSlice(allocator, token_text.items);
-
-            try history.append(allocator, next_token);
-            last_logits = engine.forward(next_token, pos);
-            pos += 1;
-        }
-        std.debug.print("\n\n", .{});
-
-        const asst_content = try allocator.dupe(u8, answer_tokens.items);
-        try messages.append(allocator, .{ .role = .assistant, .content = asst_content });
+        return l;
     }
+
+    fn close(self: *Loaded, allocator: std.mem.Allocator) void {
+        if (self.template) |*t| t.deinit();
+        self.model.deinit();
+        self.tok.deinit();
+        self.reader.deinit();
+        allocator.destroy(self);
+    }
+};
+
+/// Token ids that end generation: the container's list when it has one, else the model's EOS
+/// plus the usual end-of-turn markers.
+fn isStopToken(tok: *const hk.tokenizer.Tokenizer, id: u32) bool {
+    if (tok.eos) |e| if (id == e) return true;
+    if (tok.eog) |list| for (0..list.count) |i| if (@as(u32, @intCast(list.get(i))) == id) return true;
+    const ty = tok.tokenType(id);
+    if (ty != .control and ty != .user_defined) return false;
+    const p = tok.piece(id);
+    const stops = [_][]const u8{ "<|im_end|>", "<|eot_id|>", "<|end_of_text|>", "<|endoftext|>", "<|end|>", "<end_of_turn>", "</s>" };
+    for (stops) |s| if (std.mem.eql(u8, p, s)) return true;
+    return false;
+}
+
+/// Generated text goes to stdout so it can be piped; notes and statistics go to stderr.
+fn writeOut(bytes: []const u8) void {
+    std.Io.File.stdout().writeStreamingAll(std.Options.debug_io, bytes) catch {};
+}
+
+/// Prints bytes as they arrive, holding back an incomplete UTF-8 sequence until it is whole.
+const Streamer = struct {
+    pending: [4]u8 = undefined,
+    n: usize = 0,
+
+    fn feed(self: *Streamer, bytes: []const u8) void {
+        var out: [64]u8 = undefined;
+        var olen: usize = 0;
+        for (bytes) |b| {
+            self.pending[self.n] = b;
+            self.n += 1;
+            const need = std.unicode.utf8ByteSequenceLength(self.pending[0]) catch 1;
+            if (self.n >= need or self.n == 4) {
+                if (olen + self.n > out.len) {
+                    writeOut(out[0..olen]);
+                    olen = 0;
+                }
+                @memcpy(out[olen..][0..self.n], self.pending[0..self.n]);
+                olen += self.n;
+                self.n = 0;
+            }
+        }
+        if (olen > 0) writeOut(out[0..olen]);
+    }
+};
+
+fn nowNs() i128 {
+    return std.Io.Timestamp.now(std.Options.debug_io, .awake).nanoseconds;
+}
+
+/// Resident memory split, Linux only.
+fn memSummary() struct { rss_mib: f64, anon_mib: f64, file_mib: f64 } {
+    var buf: [4096]u8 = undefined;
+    const io = std.Options.debug_io;
+    var f = std.Io.Dir.cwd().openFile(io, "/proc/self/status", .{}) catch return .{ .rss_mib = 0, .anon_mib = 0, .file_mib = 0 };
+    defer f.close(io);
+    const n = f.readPositionalAll(io, &buf, 0) catch return .{ .rss_mib = 0, .anon_mib = 0, .file_mib = 0 };
+    var r: f64 = 0;
+    var an: f64 = 0;
+    var fl: f64 = 0;
+    var lines = std.mem.splitScalar(u8, buf[0..n], '\n');
+    while (lines.next()) |line| {
+        var it = std.mem.tokenizeAny(u8, line, " \t");
+        const key = it.next() orelse continue;
+        const val = std.fmt.parseInt(u64, it.next() orelse continue, 10) catch continue;
+        const mib = @as(f64, @floatFromInt(val)) / 1024.0;
+        if (std.mem.eql(u8, key, "VmRSS:")) r = mib;
+        if (std.mem.eql(u8, key, "RssAnon:")) an = mib;
+        if (std.mem.eql(u8, key, "RssFile:")) fl = mib;
+    }
+    return .{ .rss_mib = r, .anon_mib = an, .file_mib = fl };
+}
+
+const GenStats = struct { prompt_tokens: usize, reused: usize, prompt_secs: f64, produced: usize, gen_secs: f64 };
+
+/// Evaluates `ids` in the session (reusing its cache) and samples a reply, streaming it to the
+/// terminal. The generated ids are left in the session cache so the next turn can build on them.
+fn generate(
+    allocator: std.mem.Allocator,
+    l: *Loaded,
+    sess: *hk.engine.Session,
+    ids: []const u32,
+    max_tokens: usize,
+    params: hk.sampler.Params,
+    history: *std.ArrayList(u32),
+    reply: ?*std.ArrayList(u8),
+) !GenStats {
+    var sampler = hk.sampler.Sampler.init(allocator, params.seed);
+    defer sampler.deinit();
+    const t0 = nowNs();
+    const reused = try sess.evaluate(ids);
+    try history.appendSlice(allocator, ids[reused..]);
+    const t1 = nowNs();
+
+    var streamer = Streamer{};
+    var bytes: std.ArrayList(u8) = .empty;
+    defer bytes.deinit(allocator);
+    const logits_copy = try allocator.alloc(f32, l.model.cfg.vocab);
+    defer allocator.free(logits_copy);
+
+    var produced: usize = 0;
+    while (produced < max_tokens) {
+        @memcpy(logits_copy, sess.logits());
+        const next = try sampler.sample(logits_copy, history.items, params, false);
+        if (isStopToken(&l.tok, next)) break;
+        bytes.clearRetainingCapacity();
+        try l.tok.decodeToken(next, false, &bytes);
+        streamer.feed(bytes.items);
+        if (reply) |r| try r.appendSlice(allocator, bytes.items);
+        try history.append(allocator, next);
+        produced += 1;
+        sess.step(next) catch |e| {
+            if (e == error.ContextFull) {
+                std.debug.print("\n[context window of {d} tokens is full]", .{sess.kv.n_ctx});
+                break;
+            }
+            return e;
+        };
+    }
+    const t2 = nowNs();
+    return .{
+        .prompt_tokens = ids.len,
+        .reused = reused,
+        .prompt_secs = @as(f64, @floatFromInt(t1 - t0)) / 1e9,
+        .produced = produced,
+        .gen_secs = @as(f64, @floatFromInt(t2 - t1)) / 1e9,
+    };
+}
+
+fn printStats(l: *Loaded, st: GenStats) void {
+    const m = memSummary();
+    const evaluated = st.prompt_tokens - st.reused;
+    std.debug.print("\n\n[prompt {d} tok ({d} cached), {d:.1} tok/s | generated {d} tok, {d:.1} tok/s | memory {d:.0} MiB = {d:.0} private + {d:.0} mapped | threads {d}]\n", .{
+        st.prompt_tokens,
+        st.reused,
+        @as(f64, @floatFromInt(evaluated)) / @max(st.prompt_secs, 1e-9),
+        st.produced,
+        @as(f64, @floatFromInt(st.produced)) / @max(st.gen_secs, 1e-9),
+        m.rss_mib,
+        m.anon_mib,
+        m.file_mib,
+        l.model.pool.size(),
+    });
+}
+
+const usage_gen =
+    \\Usage: hk run  <model.hk | owner/name[:quant]> [prompt | -p TEXT] [options]
+    \\       hk chat <model.hk | owner/name[:quant]> [options]
+    \\
+    \\  -p, --prompt TEXT     text to continue (run only; a bare argument works too)
+    \\      --chat            run only: wrap the prompt as a user message with the chat template
+    \\  -n, --max-tokens N    most tokens to generate (default 128 for run, 1024 for chat)
+    \\      --temp T          temperature, 0 picks the most likely token (default 0.8)
+    \\      --top-k N         keep the N most likely tokens, 0 for no limit (default 40)
+    \\      --top-p P         nucleus sampling, 1 to disable (default 0.95)
+    \\      --min-p P         drop tokens below P times the best one (default 0.05)
+    \\      --repeat-penalty X  penalty for recent tokens, 1 to disable (default 1.0)
+    \\      --seed N          random seed, 0 uses the clock (default 0)
+    \\      --threads N       compute threads (default: the number of physical cores)
+    \\  -ngl, --gpu-layers N  run on a GPU (Vulkan) when N > 0 and the model fits; the whole model
+    \\                        goes to the device, so any N above 0 means all layers. Also HK_GPU=1.
+    \\
+;
+
+const GenMode = enum { run, chat };
+
+/// Whether to use a GPU: `-ngl N` with N above 0, or HK_GPU=1 in the environment.
+fn gpuMode(gpu_layers: ?usize) hk.engine.model.GpuMode {
+    if (gpu_layers) |n| return if (n > 0) .auto else .off;
+    if (g_env) |e| if (e.get("HK_GPU")) |t| {
+        if (std.mem.eql(u8, t, "1") or std.mem.eql(u8, t, "on")) return .auto;
+    };
+    return .off;
+}
+
+const GenArgs = struct {
+    prompt: ?[]const u8 = null,
+    chat_prompt: bool = false,
+    max_tokens: usize = 128,
+    gpu_layers: ?usize = null,
+    threads: usize = 0,
+    params: hk.sampler.Params = .{},
+};
+
+fn isHelp(arg: []const u8) bool {
+    return std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help");
+}
+
+fn badValue(flag: []const u8, value: []const u8, expected: []const u8) error{BadUsage} {
+    std.debug.print("Error: '{s}' is not a valid value for {s} (expected {s})\n", .{ value, flag, expected });
+    return error.BadUsage;
+}
+
+fn needValue(it: *std.process.Args.Iterator, flag: []const u8) error{BadUsage}![]const u8 {
+    return it.next() orelse {
+        std.debug.print("Error: {s} needs a value\n", .{flag});
+        return error.BadUsage;
+    };
+}
+
+fn parseUint(it: *std.process.Args.Iterator, flag: []const u8, min: usize) error{BadUsage}!usize {
+    const v = try needValue(it, flag);
+    const n = std.fmt.parseInt(usize, v, 10) catch return badValue(flag, v, "a whole number");
+    if (n < min) return badValue(flag, v, if (min == 1) "a number of at least 1" else "a larger number");
+    return n;
+}
+
+fn parseFloatIn(it: *std.process.Args.Iterator, flag: []const u8, lo: f32, hi: f32, expected: []const u8) error{BadUsage}!f32 {
+    const v = try needValue(it, flag);
+    const x = std.fmt.parseFloat(f32, v) catch return badValue(flag, v, expected);
+    if (!(x >= lo and x <= hi)) return badValue(flag, v, expected);
+    return x;
+}
+
+/// Parses the flags of `run` and `chat`. Anything unknown or malformed is an error: a typo should
+/// never silently fall back to a default.
+fn parseGenArgs(it: *std.process.Args.Iterator, mode: GenMode) error{BadUsage}!GenArgs {
+    var g = GenArgs{ .max_tokens = if (mode == .chat) 1024 else 128 };
+    while (it.next()) |flag| {
+        if (std.mem.eql(u8, flag, "-p") or std.mem.eql(u8, flag, "--prompt")) {
+            if (mode != .run) return unknownFlag(flag);
+            if (g.prompt != null) return twoPrompts();
+            g.prompt = try needValue(it, flag);
+        } else if (std.mem.eql(u8, flag, "--chat")) {
+            if (mode != .run) return unknownFlag(flag);
+            g.chat_prompt = true;
+        } else if (std.mem.eql(u8, flag, "-n") or std.mem.eql(u8, flag, "--max-tokens")) {
+            g.max_tokens = try parseUint(it, flag, 1);
+        } else if (std.mem.eql(u8, flag, "-ngl") or std.mem.eql(u8, flag, "--gpu-layers")) {
+            g.gpu_layers = try parseUint(it, flag, 0);
+        } else if (std.mem.eql(u8, flag, "--threads")) {
+            g.threads = try parseUint(it, flag, 1);
+        } else if (std.mem.eql(u8, flag, "--temp")) {
+            g.params.temperature = try parseFloatIn(it, flag, 0, 100, "a number from 0 up");
+        } else if (std.mem.eql(u8, flag, "--top-k")) {
+            g.params.top_k = @intCast(@min(try parseUint(it, flag, 0), std.math.maxInt(u32)));
+        } else if (std.mem.eql(u8, flag, "--top-p")) {
+            g.params.top_p = try parseFloatIn(it, flag, 0, 1, "a number from 0 to 1");
+        } else if (std.mem.eql(u8, flag, "--min-p")) {
+            g.params.min_p = try parseFloatIn(it, flag, 0, 1, "a number from 0 to 1");
+        } else if (std.mem.eql(u8, flag, "--repeat-penalty") or std.mem.eql(u8, flag, "--rep-pen")) {
+            g.params.repeat_penalty = try parseFloatIn(it, flag, 0.01, 100, "a positive number");
+        } else if (std.mem.eql(u8, flag, "--seed")) {
+            const v = try needValue(it, flag);
+            g.params.seed = std.fmt.parseInt(u64, v, 10) catch return badValue(flag, v, "a whole number");
+        } else if (flag.len > 0 and flag[0] == '-') {
+            return unknownFlag(flag);
+        } else if (mode == .run) {
+            // A bare argument is the prompt.
+            if (g.prompt != null) return twoPrompts();
+            g.prompt = flag;
+        } else return unknownFlag(flag);
+    }
+    return g;
+}
+
+fn unknownFlag(flag: []const u8) error{BadUsage} {
+    std.debug.print("Error: unknown argument '{s}'\n{s}", .{ flag, usage_gen });
+    return error.BadUsage;
+}
+
+fn twoPrompts() error{BadUsage} {
+    std.debug.print("Error: more than one prompt was given. Quote the prompt so it is one argument.\n", .{});
+    return error.BadUsage;
+}
+
+fn cmdRun(model_path: []const u8, g: GenArgs, allocator: std.mem.Allocator) !void {
+    const prompt_in = g.prompt orelse {
+        std.debug.print("Error: no prompt. Give one as a bare argument or with -p.\n", .{});
+        return error.BadUsage;
+    };
+
+    const l = try Loaded.open(allocator, model_path, .{ .n_threads = g.threads, .gpu = gpuMode(g.gpu_layers) });
+    defer l.close(allocator);
+
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    var prompt: []const u8 = prompt_in;
+    if (g.chat_prompt) {
+        const t = if (l.template) |*t| t else {
+            std.debug.print("Error: this model has no chat template, so --chat cannot be used.\n", .{});
+            return error.NoChatTemplate;
+        };
+        var jd = hk.chat.jinja.Diag{};
+        const msgs = [_]hk.chat.Message{.{ .role = "user", .content = prompt_in }};
+        prompt = t.render(arena_state.allocator(), &msgs, .{ .add_generation_prompt = true }, &jd) catch {
+            std.debug.print("Error: the chat template failed: {s}\n", .{jd.message()});
+            return error.TemplateFailed;
+        };
+    }
+
+    var ids: std.ArrayList(u32) = .empty;
+    defer ids.deinit(allocator);
+    // Templates write their own start token; plain text gets the model's.
+    try l.tok.encode(prompt, .{ .add_special = !g.chat_prompt, .parse_special = true }, &ids);
+    if (ids.items.len == 0) {
+        std.debug.print("Error: the prompt produced no tokens.\n", .{});
+        return error.EmptyPrompt;
+    }
+
+    var sess = try hk.engine.Session.init(allocator, &l.model, l.model.n_ctx);
+    defer sess.deinit();
+    writeOut(prompt);
+    var history: std.ArrayList(u32) = .empty;
+    defer history.deinit(allocator);
+    const st = try generate(allocator, l, &sess, ids.items, g.max_tokens, g.params, &history, null);
+    printStats(l, st);
+}
+
+fn cmdChat(model_path: []const u8, g: GenArgs, allocator: std.mem.Allocator) !void {
+    const l = try Loaded.open(allocator, model_path, .{ .n_threads = g.threads, .gpu = gpuMode(g.gpu_layers) });
+    defer l.close(allocator);
+
+    const io = std.Options.debug_io;
+    var stdin_buf: [4096]u8 = undefined;
+    var stdin_reader = std.Io.File.stdin().reader(io, &stdin_buf);
+
+    var sess = try hk.engine.Session.init(allocator, &l.model, l.model.n_ctx);
+    defer sess.deinit();
+
+    // The conversation so far. Strings are owned by the arena for the life of the chat.
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var messages: std.ArrayList(hk.chat.Message) = .empty;
+    var history: std.ArrayList(u32) = .empty;
+    defer history.deinit(allocator);
+
+    if (l.template == null) std.debug.print("Note: this model has no chat template; using a plain transcript.\n", .{});
+    std.debug.print("hk chat: type a message, an empty line or Ctrl-D to quit.\n", .{});
+    while (true) {
+        std.debug.print("\n> ", .{});
+        const line_opt = stdin_reader.interface.takeDelimiter('\n') catch break;
+        const line = std.mem.trim(u8, line_opt orelse break, " \r\n\t");
+        if (line.len == 0) break;
+        try messages.append(arena, .{ .role = "user", .content = try arena.dupe(u8, line) });
+
+        // Render the whole conversation; the session reuses whatever is already cached.
+        var prompt_text: []const u8 = undefined;
+        var jd = hk.chat.jinja.Diag{};
+        if (l.template) |*t| {
+            prompt_text = t.render(arena, messages.items, .{ .add_generation_prompt = true }, &jd) catch {
+                std.debug.print("Error: the chat template failed: {s}\n", .{jd.message()});
+                _ = messages.pop();
+                continue;
+            };
+        } else {
+            var buf: std.ArrayList(u8) = .empty;
+            for (messages.items) |m| try buf.print(arena, "{s}: {s}\n", .{ if (std.mem.eql(u8, m.role, "user")) "User" else "Assistant", m.content });
+            try buf.appendSlice(arena, "Assistant:");
+            prompt_text = buf.items;
+        }
+        var ids: std.ArrayList(u32) = .empty;
+        defer ids.deinit(allocator);
+        try l.tok.encode(prompt_text, .{ .add_special = false, .parse_special = true }, &ids);
+        if (ids.items.len + 64 >= sess.kv.n_ctx) {
+            std.debug.print("[the conversation no longer fits the context window]\n", .{});
+            break;
+        }
+        var reply: std.ArrayList(u8) = .empty;
+        defer reply.deinit(allocator);
+        const st = try generate(allocator, l, &sess, ids.items, g.max_tokens, g.params, &history, &reply);
+        try messages.append(arena, .{ .role = "assistant", .content = try arena.dupe(u8, std.mem.trim(u8, reply.items, " \n")) });
+        printStats(l, st);
+    }
+}
+
+fn usageServe() error{BadUsage} {
+    std.debug.print(
+        \\Usage: hk serve <file.hk | owner/name[:quant]> [options]
+        \\
+        \\  --host ADDR      address to listen on (default 127.0.0.1)
+        \\  --port N         port (default 8080)
+        \\  --slots N        conversations served at once (default 4)
+        \\  --ctx N          context window per slot (default: the model's, up to 8192)
+        \\  --batch N        most tokens per forward pass (default 256)
+        \\  --threads N      compute threads (default: the number of physical cores)
+        \\  -ngl N           use a GPU (Vulkan) when N > 0 and the model fits; one device region per slot
+        \\  --api-key KEY    require "Authorization: Bearer KEY" (or set HK_API_KEY)
+        \\  --alias NAME     model name reported by the API
+        \\
+        \\Routes: /v1/chat/completions /v1/completions /v1/models /health /metrics /tokenize /detokenize
+        \\
+    , .{});
+    return error.BadUsage;
+}
+
+fn cmdServe(allocator: std.mem.Allocator, io: std.Io, env: cli_hub.Env, args: *std.process.Args.Iterator) !void {
+    var model_arg: ?[]const u8 = null;
+    var cfg = hk.server.Config{};
+    var slots: usize = 4;
+    var opts = hk.engine.Options{};
+    var alias: ?[]const u8 = null;
+    cfg.api_key = env.get("HK_API_KEY");
+    while (args.next()) |a| {
+        if (std.mem.eql(u8, a, "--host")) {
+            cfg.host = args.next() orelse return usageServe();
+        } else if (std.mem.eql(u8, a, "--port")) {
+            cfg.port = std.fmt.parseInt(u16, args.next() orelse return usageServe(), 10) catch return usageServe();
+        } else if (std.mem.eql(u8, a, "--slots")) {
+            slots = std.fmt.parseInt(usize, args.next() orelse return usageServe(), 10) catch return usageServe();
+            if (slots == 0 or slots > 64) return usageServe();
+        } else if (std.mem.eql(u8, a, "--ctx")) {
+            opts.n_ctx = std.fmt.parseInt(usize, args.next() orelse return usageServe(), 10) catch return usageServe();
+        } else if (std.mem.eql(u8, a, "--batch")) {
+            opts.n_batch = std.fmt.parseInt(usize, args.next() orelse return usageServe(), 10) catch return usageServe();
+        } else if (std.mem.eql(u8, a, "--threads")) {
+            opts.n_threads = std.fmt.parseInt(usize, args.next() orelse return usageServe(), 10) catch return usageServe();
+        } else if (std.mem.eql(u8, a, "-ngl") or std.mem.eql(u8, a, "--gpu-layers")) {
+            const n = std.fmt.parseInt(usize, args.next() orelse return usageServe(), 10) catch return usageServe();
+            opts.gpu = if (n > 0) .auto else .off;
+        } else if (std.mem.eql(u8, a, "--api-key")) {
+            cfg.api_key = args.next() orelse return usageServe();
+        } else if (std.mem.eql(u8, a, "--alias")) {
+            alias = args.next() orelse return usageServe();
+        } else if (std.mem.eql(u8, a, "--max-body-mb")) {
+            const mb = std.fmt.parseInt(usize, args.next() orelse return usageServe(), 10) catch return usageServe();
+            cfg.max_body_bytes = mb << 20;
+        } else if (model_arg == null) {
+            model_arg = a;
+        } else return usageServe();
+    }
+    const arg = model_arg orelse return usageServe();
+    const path = try resolveModel(allocator, io, env, arg);
+    defer allocator.free(path);
+
+    // A batch has to hold at least one token per slot or decoding would starve.
+    opts.n_batch = @max(opts.n_batch, slots);
+    opts.gpu_slots = slots;
+    if (opts.gpu == .off and gpuMode(null) != .off) opts.gpu = .auto;
+    const l = try Loaded.open(allocator, path, opts);
+    defer l.close(allocator);
+
+    cfg.model_name = alias orelse std.fs.path.stem(path);
+    var sched = try hk.server.Scheduler.init(allocator, io, &l.model, &l.tok, slots, l.model.n_ctx);
+    defer sched.deinit();
+    try sched.start();
+
+    var srv = hk.server.Server{
+        .allocator = allocator,
+        .io = io,
+        .sched = &sched,
+        .tok = &l.tok,
+        .template = if (l.template) |*t| t else null,
+        .cfg = cfg,
+        .started_ns = std.Io.Timestamp.now(io, .awake).nanoseconds,
+    };
+    try srv.run();
 }
 
 fn cmdTokenize(model_path: []const u8, text: []const u8, allocator: std.mem.Allocator) !void {
-    var reader = try hk.HKReader.open(model_path, allocator);
+    var reader = hk.HKReader.open(model_path, allocator) catch |err| {
+        std.debug.print("Error: cannot open '{s}': {s}\n", .{ model_path, @errorName(err) });
+        return err;
+    };
     defer reader.deinit();
-
-    var tok = hk.tokenizer.Tokenizer.init(allocator);
+    var diag = hk.tokenizer.Diag{};
+    var tok = hk.tokenizer.Tokenizer.fromMetadata(allocator, &reader.metadata_map, &diag) catch |err| {
+        std.debug.print("Error: {s}\n", .{diag.message()});
+        return err;
+    };
     defer tok.deinit();
-    try tok.loadFromMetadata(&reader.metadata_map);
 
-    var tokens: std.ArrayList(u32) = .empty;
-    defer tokens.deinit(allocator);
-    try tok.encode(text, true, false, &tokens);
-
-    std.debug.print("Tokenized ({} tokens):\n", .{tokens.items.len});
-    for (tokens.items, 0..) |tid, i| {
-        var tok_str: std.ArrayList(u8) = .empty;
-        defer tok_str.deinit(allocator);
-        try tok.decode(&.{tid}, false, &tok_str);
-        std.debug.print("  [{:3}] ID: {:5} -> \"{s}\"\n", .{ i, tid, tok_str.items });
-    }
+    var ids: std.ArrayList(u32) = .empty;
+    defer ids.deinit(allocator);
+    try tok.encode(text, .{ .add_special = false, .parse_special = true }, &ids);
+    std.debug.print("{d} tokens:", .{ids.items.len});
+    for (ids.items) |id| std.debug.print(" {d}", .{id});
+    std.debug.print("\n", .{});
 }
 
 fn cmdDetokenize(model_path: []const u8, ids: []const u32, allocator: std.mem.Allocator) !void {
-    var reader = try hk.HKReader.open(model_path, allocator);
+    var reader = hk.HKReader.open(model_path, allocator) catch |err| {
+        std.debug.print("Error: cannot open '{s}': {s}\n", .{ model_path, @errorName(err) });
+        return err;
+    };
     defer reader.deinit();
-
-    var tok = hk.tokenizer.Tokenizer.init(allocator);
+    var diag = hk.tokenizer.Diag{};
+    var tok = hk.tokenizer.Tokenizer.fromMetadata(allocator, &reader.metadata_map, &diag) catch |err| {
+        std.debug.print("Error: {s}\n", .{diag.message()});
+        return err;
+    };
     defer tok.deinit();
-    try tok.loadFromMetadata(&reader.metadata_map);
-
-    var out_text: std.ArrayList(u8) = .empty;
-    defer out_text.deinit(allocator);
-    try tok.decode(ids, false, &out_text);
-
-    std.debug.print("Decoded text:\n{s}\n", .{out_text.items});
+    var text: std.ArrayList(u8) = .empty;
+    defer text.deinit(allocator);
+    try tok.decode(ids, true, &text);
+    std.debug.print("{s}\n", .{text.items});
 }
 
 fn cmdConvertSafeTensors(in_path: []const u8, out_path: []const u8, target_st_str: []const u8, allocator: std.mem.Allocator) !void {

@@ -75,6 +75,13 @@ jobs:
               cp zig-out/lib/hk.lib zig-out/staged/hk.lib
             fi
           fi
+          # The command line tool, which carries every instruction set level in one binary.
+          if [ -f zig-out/bin/hk ]; then
+            cp zig-out/bin/hk zig-out/staged/hk-${{ matrix.target }}
+          fi
+          if [ -f zig-out/bin/hk.exe ]; then
+            cp zig-out/bin/hk.exe zig-out/staged/hk-${{ matrix.target }}.exe
+          fi
 
       - name: Upload Binary Artifact
         uses: actions/upload-artifact@v4

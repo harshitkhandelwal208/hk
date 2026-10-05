@@ -1,165 +1,73 @@
-# Autonomous Self-Training and Self-Play
+# Self-Training Toolkit (`hk.adaptive`)
 
-In this guide, I explain HK's autonomous self-learning pipeline, which allows models to self-diagnose weaknesses, formulate reasoning traces, generate candidate solutions, and verify them inside a secure code sandbox.
+> **Status: experimental research code, Python only, not part of the inference engine.** This page documents building blocks for a "generate, test, learn from what passed" loop. They are components you wire together, not a turnkey autonomous system: you supply the function that produces solutions and the function that performs a training step. No result showing that the loop improves a model is included or claimed.
+>
+> **Security first:** `CodeSandbox` runs model-written Python. In its default mode it is **not a security boundary** (details below). Do not run untrusted generated code outside a container or VM you are prepared to lose.
 
----
-
-## Overview
-
-Traditional model improvement relies heavily on massive external synthetic data pipelines, human labelers, and manual prompt engineering.
-
-I designed HK with a self-contained evolutionary loop for autonomous improvement:
-1. Diagnose: Identifies representation deficits, syntax error patterns, or missing tokens.
-2. Reflect: Uses dual-agent dialogue to generate structured inner monologue reasoning traces (`<think> ... </think>`).
-3. Synthesize: Produces candidate implementations or problem solutions.
-4. Verify: Executes code candidates inside an AST-validated, process-isolated sandbox.
-5. Reinforce: Applies Self-Play Fine-Tuning (SPIN) loss, rewarding verifiably correct solutions and penalizing failed attempts.
-6. Adapt: If the task complexity exceeds the model's current capacity, it triggers Net2Net widening under the supervision of the GrowthGovernor.
+Source: `python/hk/adaptive/` (`self_training.py`, `self_conversation.py`, `code_eval.py`, `expansion_evaluator.py`, `self_play.py`). These operate on the Python `HKForCausalLM` family (see [Training and Fine-Tuning](Training-and-Fine-Tuning)), not on the Zig engine.
 
 ---
 
-## The Four Stages of the Self-Training Loop
+## Pieces
 
-```
-+-------------------------------------------------------------+
-| 1. Bottleneck Diagnosis (ExpansionEvaluator)                |
-|    Probes error rates and missing tokens across curriculum  |
-+-------------------------------------------------------------+
-                               |
-                               v
-+-------------------------------------------------------------+
-| 2. Inner Monologue Reflection (SelfConversationalEngine)    |
-|    Generates <think> reasoning traces before coding         |
-+-------------------------------------------------------------+
-                               |
-                               v
-+-------------------------------------------------------------+
-| 3. Sandboxed Execution (CodeSandbox)                        |
-|    Validates code in isolated process with strict timeout   |
-+-------------------------------------------------------------+
-                               |
-                               v
-+-------------------------------------------------------------+
-| 4. Self-Play Fine-Tuning (SPINLoss) & Appendix Recording    |
-|    Reinforces passing solutions, writes audit record        |
-+-------------------------------------------------------------+
-```
+| Component | What it actually does |
+| :--- | :--- |
+| `CodeSandbox` (alias `SandboxExecutor`) | Syntax-checks code with `ast.parse`, then runs it plus optional test calls in a child Python process with a wall-clock timeout, and parses a JSON result block from stdout into an `EvalResult` (success, pass rate, stdout/stderr, timing). Optional Docker mode (`use_docker=True`, requires the Docker CLI and the image already pulled): `--network none`, `--memory`, `--cpus`. |
+| `SelfConversationalEngine` | Runs a propose/think/test/reflect loop around caller-supplied functions. Extracts `<think>...</think>` reasoning and a code block from a response, runs the code in the sandbox, and on failure calls a reflector for a retry (up to `max_reflection_steps`). It formats successful traces as ChatML-style training pairs. |
+| `ExpansionEvaluator` | Heuristics over numbers you provide (diagnostic loss/perplexity, pass rate, missing domain keywords) that decide whether to recommend vocabulary and/or width growth, subject to a `GrowthGovernor` budget. It does not probe the model itself. |
+| `SelfTrainingPipeline` | Coordinates the above for one generation: for each curriculum task, run a self-dialogue, count passes, call your `optimizer_step_fn` on the passing dialogues, and append a `code_eval` record to the model's appendix. Optional autonomous expansion hooks into `ExpansionEvaluator` and `growth.py`. |
+| `SPINLoss`, `SelfPlayEvolutionEngine`, `LoRAAdapter` (`self_play.py`) | A SPIN-style preference loss between current and previous-generation log-probabilities, a LoRA adapter module, and a loop that records adapters to the appendix and can roll back on regression. |
+
+### `CodeSandbox` limits
+
+- **Subprocess mode (default):** only a timeout. There is no import filter, no memory cap, no filesystem or network isolation; the code runs as your user. The earlier description of AST-based import blocking and memory limits was wrong. `ast.parse` is used only to detect syntax errors.
+- **Docker mode:** network disabled, memory and CPU limits applied. If Docker is unavailable or the image is missing it falls back silently to the unsandboxed subprocess mode; check `sandbox.is_docker_active`.
+- Only Python is executed. A `target_language` of other languages affects prompt formatting, not execution.
 
 ---
 
-## 1. Bottleneck Diagnosis (`ExpansionEvaluator`)
-
-Before blindly adding parameters, the `ExpansionEvaluator` probes the model across a domain curriculum (such as systems programming or math). It measures:
-- Exact-match pass rates
-- Syntax compilation error distributions
-- Missing vocabulary tokens (keywords split into multiple subword pieces)
-- Gradient saturation on key projection layers
-
-If the evaluator discovers that errors are due to insufficient intermediate capacity rather than training duration, it creates a recommended architectural growth plan.
-
----
-
-## 2. Inner Monologue Reasoning (`<think>`)
-
-When we solve difficult problems, we think through the steps before acting. I implemented this in HK via `SelfConversationalEngine`, using a dual-agent Proposer and Thinker dialogue:
-
-```
-User Prompt: "Write a function in Zig to reverse a slice in-place."
-
-Generated Output:
-<think>
-To reverse a slice in-place in Zig:
-1. We need two indices: start = 0, and end = slice.len - 1.
-2. While start < end, swap slice[start] with slice[end].
-3. Increment start, decrement end.
-4. We must handle empty slices and single-element slices safely.
-5. In Zig, std.mem.swap or a temp variable can be used.
-</think>
-pub fn reverse(comptime T: type, slice: []T) void {
-    if (slice.len <= 1) return;
-    var start: usize = 0;
-    var end: usize = slice.len - 1;
-    while (start < end) : ({ start += 1; end -= 1; }) {
-        const tmp = slice[start];
-        slice[start] = slice[end];
-        slice[end] = tmp;
-    }
-}
-```
-
-The model explicitly learns to deliberate before emitting final code, improving logical consistency on complex tasks.
-
----
-
-## 3. Secure Execution Sandbox (`CodeSandbox`)
-
-Allowing an autonomous model to execute code it wrote requires strict security. The `CodeSandbox` provides multiple layers of defense:
-
-1. AST Safety Validation: Pre-screens the abstract syntax tree to reject forbidden imports (e.g. `os`, `subprocess`, `socket`, `shutil` in Python) and dangerous builtins (`eval`, `exec`, `__import__`).
-2. Subprocess Isolation: Executes candidate programs in separate child processes.
-3. Strict Timeouts: Automatically terminates infinite loops after a user-defined threshold (e.g., 2.0 seconds).
-4. Memory Caps: Limits the virtual memory address space of the sandboxed process to prevent memory exhaustion attacks.
-
-Only candidate solutions that compile cleanly and pass all unit tests provide positive reinforcement gradients.
-
----
-
-## 4. Self-Play Fine-Tuning (`SPINLoss`)
-
-Rather than relying on static external rewards, `SPINLoss` (Self-Play Fine-Tuning) pits the current generation of the model against its past self:
-- The current model acts as the player attempting to distinguish and improve upon candidate outputs generated by the previous model generation.
-- The loss function mathematically drives the model to produce answers that are more coherent, verified, and complete than what it generated in the past iteration.
-- This creates an iterative bootstrapping loop that increases reasoning depth over multiple generations.
-
----
-
-## Python Example: Running a Self-Training Generation
+## Using the pipeline
 
 ```python
-from hk import HKConfig, HKForCausalLM
 from hk.adaptive import (
-    SelfTrainingPipeline,
-    SelfTrainingCurriculum,
-    SelfConversationalEngine,
-    CodeSandbox,
-    GrowthGovernor,
+    SelfTrainingPipeline, SelfTrainingCurriculum, SelfConversationalEngine, CodeSandbox,
 )
 
-# 1. Initialize model
-config = HKConfig(vocab_size=32000, hidden_size=1024, num_hidden_layers=8)
-model = HKForCausalLM(config)
-
-# 2. Setup curriculum with diagnostic tasks
 curriculum = SelfTrainingCurriculum(
     domain_name="Algorithms",
-    target_language="Python",
-    syntax_keywords=["def", "return", "yield", "class", "async"],
-    diagnostic_tasks=[
-        {"prompt": "Write a binary search function.", "tests": ["assert binary_search([1,2,3], 2) == 1"]},
-    ],
-    training_tasks=[
-        {"prompt": "Write a function to check if a string is a palindrome.", "tests": ["assert is_palindrome('racecar') == True"]},
-    ],
+    target_language="python",
+    syntax_keywords=["def", "return", "yield"],
+    training_tasks=[{
+        "id": "palindrome",
+        "prompt": "Write is_palindrome(s).",
+        "test_cases": [{"call": "is_palindrome('racecar')", "expected": True}],
+    }],
 )
 
-# 3. Setup sandbox and conversational engine
-sandbox = CodeSandbox(timeout_sec=2.0)
-engine = SelfConversationalEngine(sandbox=sandbox)
+engine = SelfConversationalEngine(sandbox=CodeSandbox(timeout_sec=2.0, use_docker=True))
+pipeline = SelfTrainingPipeline(model=model, hk_file_path="model.hk", conversational_engine=engine)
 
-# 4. Initialize pipeline
-pipeline = SelfTrainingPipeline(
-    model=model,
-    hk_file_path="checkpoints/autonomous_model.hk",
-    governor=GrowthGovernor(max_vram_mb=8192),
-    conversational_engine=engine,
-    rehearsal_ratio=0.10,  # 10% old task rehearsal to prevent forgetting
+def solution_generator_fn(prompt: str) -> str:
+    ...   # your model sampling code; return text containing <think>..</think> and a code block
+
+def optimizer_step_fn(dialogues, model) -> float:
+    ...   # your training step on the passing dialogues; return the loss
+
+report = pipeline.train_generation(
+    curriculum,
+    solution_generator_fn=solution_generator_fn,
+    optimizer_step_fn=optimizer_step_fn,
 )
-
-# 5. Run a self-training generation
-report = pipeline.train_generation(curriculum, generation_idx=1)
-
-print(f"Generation 1 Complete.")
-print(f"Pass Rate: {report.pass_rate * 100:.1f}%")
-print(f"Capacity Expanded: {report.expansion_occurred}")
-print(f"New Parameters Added: {report.new_parameters}")
+print(report.pass_rate, report.successful_dialogues, report.train_loss)
 ```
+
+`GenerationReport` fields: `generation`, `train_loss`, `pass_rate`, `expansion_occurred`, `expansion_details`, `evaluated_tasks`, `successful_dialogues`. Test cases use `call`/`expected` (and optional `desc`) keys. Check constructor arguments in `self_training.py` before relying on optional ones.
+
+---
+
+## Caveats
+
+- The "autonomy" is the loop structure; model quality, sampling and the training step are yours.
+- Pass rate is measured only on the tests you write; models can pass weak tests without being correct.
+- Training on a model's own verified outputs can reinforce mistakes the tests miss. Nothing here guards against that beyond rehearsal and the appendix rollback tools.
+- Appendix records are written by `append_record`; see [In-Container Version Lineage](In-Container-Version-Lineage) for what that does and does not give you.

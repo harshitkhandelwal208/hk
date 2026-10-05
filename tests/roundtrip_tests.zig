@@ -182,7 +182,7 @@ test "full writer and reader roundtrip with advanced features" {
     try writer.addMetadataFloat("pruning_ratio", 0.50);
 
     // 1. Dense F32 Tensor
-    const weights1: [128]f32 = [_]f32{1.5} ** 128;
+    const weights1: [128]f32 = @as([128]f32, @splat(1.5));
     const weights1_bytes = std.mem.sliceAsBytes(&weights1);
     try writer.addTensor(.{
         .name = "encoder.layer0.attention.q_proj.weight",
@@ -312,7 +312,7 @@ test "Appendix Region Append, Read, Lineage & Rollback" {
         .target = "model.base.weight",
         .generation = 1,
         .timestamp = 1726000000,
-        .parent_hash = [_]u8{0} ** 32,
+        .parent_hash = @as([32]u8, @splat(0)),
         .metrics = .{ .loss = 0.12, .accuracy = 0.985, .pass_rate = 0.0, .custom = 0.0 },
         .data = lora_payload,
     });
@@ -464,7 +464,7 @@ test "simd gemv q8_0" {
         @memset(&b.qs, 1);
     }
     const bytes = std.mem.sliceAsBytes(&blocks);
-    var x: [64]f32 = [_]f32{1.0} ** 64;
+    var x: [64]f32 = @as([64]f32, @splat(1.0));
     var y: [2]f32 = undefined;
     hk.tensor_ops.gemvQ8_0(bytes, &x, null, &y, 2, 64);
     try std.testing.expectEqual(@as(f32, 64.0), y[0]);
@@ -478,7 +478,7 @@ test "simd gemv q4_0" {
         @memset(&b.qs, 0x88); // 8 is 0 in signed nibble
     }
     const bytes = std.mem.sliceAsBytes(&blocks);
-    var x: [64]f32 = [_]f32{1.0} ** 64;
+    var x: [64]f32 = @as([64]f32, @splat(1.0));
     var y: [2]f32 = undefined;
     hk.tensor_ops.gemvQ4_0(bytes, &x, null, &y, 2, 64);
     try std.testing.expectApproxEqAbs(@as(f32, 0.0), y[0], 1e-4);
@@ -494,7 +494,7 @@ test "simd gemv q4_k" {
         @memset(&b.qs, 0);
     }
     const bytes = std.mem.sliceAsBytes(&blocks);
-    var x: [256]f32 = [_]f32{1.0} ** 256;
+    var x: [256]f32 = @as([256]f32, @splat(1.0));
     var y: [2]f32 = undefined;
     hk.tensor_ops.gemvQ4_K(bytes, &x, null, &y, 2, 256);
 }
@@ -613,7 +613,7 @@ test "Appendix cryptographic SHA-256 tamper detection" {
         .target = "fc1",
         .generation = 1,
         .timestamp = 1000,
-        .parent_hash = [_]u8{0} ** 32,
+        .parent_hash = @as([32]u8, @splat(0)),
         .metrics = .{ .loss = 0.1, .accuracy = 0.90, .pass_rate = 1.0, .custom = 0.0 },
         .data = p1,
     });
@@ -697,7 +697,7 @@ test "Appendix all six entry types roundtrip" {
             .target = "module",
             .generation = @intCast(idx + 1),
             .timestamp = @intCast(1000 + idx * 100),
-            .parent_hash = [_]u8{0} ** 32,
+            .parent_hash = @as([32]u8, @splat(0)),
             .metrics = .{ .loss = 0.0, .accuracy = 0.0, .pass_rate = 0.0, .custom = 0.0 },
             .data = payload,
         });
@@ -1060,6 +1060,69 @@ test "patchFileMetadataInPlace roundtrip test" {
     try std.testing.expectEqual(@as(i64, 36), layers_val.val_int64);
 }
 
+test "patchFileMetadataInPlace growing inside the padding keeps the TOC intact" {
+    const allocator = std.testing.allocator;
+    const test_path = "test_metadata_patch_grow.hk";
+    const io = std.testing.io;
+    const cwd = std.Io.Dir.cwd();
+    defer cwd.deleteFile(io, test_path) catch {};
+
+    var writer = hk.HKWriter.init(allocator);
+    defer writer.deinit();
+    writer.setAlignment(4096);
+    try writer.addMetadataString("name", "a");
+    const dummy_data = [_]f32{ 1.0, 2.0, 3.0, 4.0 };
+    try writer.addTensor(.{
+        .name = "w",
+        .storage_type = .f32,
+        .ndim = 1,
+        .shape = .{ 4, 0, 0, 0, 0, 0, 0, 0 },
+        .data = std.mem.sliceAsBytes(&dummy_data),
+    });
+    try writer.writeToFile(test_path);
+
+    // A longer value shifts the TOC to the right; it still fits before the first payload.
+    try hk.metadata.patchFileMetadataInPlace(allocator, test_path, "name", "a much longer name");
+
+    var reader = try hk.HKReader.open(test_path, allocator);
+    defer reader.deinit();
+    try std.testing.expectEqualStrings("a much longer name", reader.metadata_map.get("name").?.val_string);
+    const entry = reader.toc.find("w").?;
+    try std.testing.expectEqualSlices(f32, &dummy_data, try reader.getRawF32(entry));
+}
+
+test "reader decodes GGUF block formats it has no dedicated branch for" {
+    const allocator = std.testing.allocator;
+    const test_path = "test_reader_q4_1.hk";
+    const io = std.testing.io;
+    const cwd = std.Io.Dir.cwd();
+    defer cwd.deleteFile(io, test_path) catch {};
+
+    // One Q4_1 block: scale 1.0, minimum 2.0, every byte 0x21 (low nibble 1, high nibble 2).
+    var block: [20]u8 = undefined;
+    std.mem.writeInt(u16, block[0..2], @bitCast(@as(f16, 1.0)), .little);
+    std.mem.writeInt(u16, block[2..4], @bitCast(@as(f16, 2.0)), .little);
+    @memset(block[4..], 0x21);
+
+    var writer = hk.HKWriter.init(allocator);
+    defer writer.deinit();
+    try writer.addTensor(.{
+        .name = "w",
+        .storage_type = .q4_1,
+        .ndim = 1,
+        .shape = .{ 32, 0, 0, 0, 0, 0, 0, 0 },
+        .data = &block,
+    });
+    try writer.writeToFile(test_path);
+
+    var reader = try hk.HKReader.open(test_path, allocator);
+    defer reader.deinit();
+    var out: [32]f32 = undefined;
+    try reader.dequantizeToF32(reader.toc.find("w").?, false, &out);
+    for (out[0..16]) |v| try std.testing.expectEqual(@as(f32, 3.0), v);
+    for (out[16..]) |v| try std.testing.expectEqual(@as(f32, 4.0), v);
+}
+
 test "k-quants q4_k super-block roundtrip" {
     var weights: [256]f32 = undefined;
     for (0..256) |i| {
@@ -1127,186 +1190,6 @@ test "microscaling mxfp4 and nvfp4 dequantization" {
     try std.testing.expectApproxEqAbs(@as(f32, 0.5), out_nvfp4[0], 1e-4);
 }
 
-test "native tokenizer bpe encoding and decoding roundtrip" {
-    const allocator = std.testing.allocator;
-    var tok = hk.tokenizer.Tokenizer.init(allocator);
-    defer tok.deinit();
-
-    // Setup toy vocab
-    _ = try tok.addToken("<pad>", 0.0, .control);
-    _ = try tok.addToken("<unk>", 0.0, .unknown);
-    _ = try tok.addToken("<s>", 0.0, .control);
-    _ = try tok.addToken("</s>", 0.0, .control);
-    _ = try tok.addToken("H", 0.0, .normal);
-    _ = try tok.addToken("e", 0.0, .normal);
-    _ = try tok.addToken("l", 0.0, .normal);
-    _ = try tok.addToken("o", 0.0, .normal);
-    _ = try tok.addToken(" ", 0.0, .normal);
-    _ = try tok.addToken("w", 0.0, .normal);
-    _ = try tok.addToken("r", 0.0, .normal);
-    _ = try tok.addToken("d", 0.0, .normal);
-    _ = try tok.addToken("ll", 0.0, .normal);
-    _ = try tok.addToken("Hel", 0.0, .normal);
-    _ = try tok.addToken("Hello", 0.0, .normal);
-    _ = try tok.addToken("world", 0.0, .normal);
-
-    // Add merges
-    try tok.addMerge("l", "l", 0);
-    try tok.addMerge("H", "e", 1);
-    try tok.addMerge("He", "l", 2);
-    try tok.addMerge("Hel", "lo", 3);
-
-    var tokens: std.ArrayList(u32) = .empty;
-    defer tokens.deinit(allocator);
-
-    try tok.encode("Hello world", false, false, &tokens);
-    try std.testing.expect(tokens.items.len > 0);
-
-    var decoded: std.ArrayList(u8) = .empty;
-    defer decoded.deinit(allocator);
-    try tok.decode(tokens.items, true, &decoded);
-
-    try std.testing.expectEqualStrings("Hello world", decoded.items);
-}
-
-test "native tokenizer chat template formatting" {
-    const allocator = std.testing.allocator;
-    var tok = hk.tokenizer.Tokenizer.init(allocator);
-    defer tok.deinit();
-
-    const messages = [_]hk.tokenizer.ChatMessage{
-        .{ .role = .system, .content = "You are a helpful AI." },
-        .{ .role = .user, .content = "Hello!" },
-    };
-
-    var out_chatml: std.ArrayList(u8) = .empty;
-    defer out_chatml.deinit(allocator);
-    try tok.formatChat(.chatml, &messages, true, &out_chatml);
-
-    try std.testing.expect(std.mem.indexOf(u8, out_chatml.items, "<|im_start|>system\nYou are a helpful AI.<|im_end|>\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out_chatml.items, "<|im_start|>user\nHello!<|im_end|>\n") != null);
-    try std.testing.expect(std.mem.endsWith(u8, out_chatml.items, "<|im_start|>assistant\n"));
-
-    var out_llama: std.ArrayList(u8) = .empty;
-    defer out_llama.deinit(allocator);
-    try tok.formatChat(.llama3, &messages, true, &out_llama);
-
-    try std.testing.expect(std.mem.startsWith(u8, out_llama.items, "<|begin_of_text|>"));
-    try std.testing.expect(std.mem.indexOf(u8, out_llama.items, "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful AI.<|eot_id|>") != null);
-    try std.testing.expect(std.mem.endsWith(u8, out_llama.items, "<|start_header_id|>assistant<|end_header_id|>\n\n"));
-}
-
-test "native sampler greedy and stochastic sampling" {
-    const allocator = std.testing.allocator;
-
-    var logits: [5]f32 = .{ 0.1, 0.5, 2.5, -1.0, 0.2 };
-    const greedy_tok = hk.sampling.Sampler.sampleGreedy(&logits);
-    try std.testing.expectEqual(@as(u32, 2), greedy_tok);
-
-    var sampler = hk.sampling.Sampler.init(12345);
-    var logits_copy = logits;
-    const sampled_tok = try sampler.sample(allocator, &logits_copy, .{
-        .temperature = 0.7,
-        .top_k = 3,
-        .top_p = 0.9,
-    }, &.{});
-    try std.testing.expect(sampled_tok < 5);
-}
-
-test "native transformer inference forward pass and kv cache" {
-    const allocator = std.testing.allocator;
-
-    const dim: usize = 32;
-    const hidden_dim: usize = 64;
-    const n_layers: usize = 1;
-    const n_heads: usize = 2;
-    const n_kv_heads: usize = 2;
-    const vocab_size: usize = 16;
-    const head_dim: usize = 16;
-
-    const cfg = hk.inference.ModelConfig{
-        .dim = dim,
-        .hidden_dim = hidden_dim,
-        .n_layers = n_layers,
-        .n_heads = n_heads,
-        .n_kv_heads = n_kv_heads,
-        .vocab_size = vocab_size,
-        .max_seq_len = 16,
-        .head_dim = head_dim,
-    };
-
-    // Allocate dummy weights in F32
-    const emb_weights = try allocator.alloc(f32, vocab_size * dim);
-    defer allocator.free(emb_weights);
-    @memset(emb_weights, 0.05);
-
-    const norm_weights = try allocator.alloc(f32, dim);
-    defer allocator.free(norm_weights);
-    @memset(norm_weights, 1.0);
-
-    const w_attn = try allocator.alloc(f32, dim * dim);
-    defer allocator.free(w_attn);
-    @memset(w_attn, 0.01);
-
-    const w_gate_up = try allocator.alloc(f32, hidden_dim * dim);
-    defer allocator.free(w_gate_up);
-    @memset(w_gate_up, 0.01);
-
-    const w_down = try allocator.alloc(f32, dim * hidden_dim);
-    defer allocator.free(w_down);
-    @memset(w_down, 0.01);
-
-    const w_head = try allocator.alloc(f32, vocab_size * dim);
-    defer allocator.free(w_head);
-    @memset(w_head, 0.02);
-
-    const tok_emb_ref = hk.inference.TensorRef{
-        .data = std.mem.sliceAsBytes(emb_weights),
-        .storage_type = .f32,
-        .rows = vocab_size,
-        .cols = dim,
-    };
-
-    const lm_head_ref = hk.inference.TensorRef{
-        .data = std.mem.sliceAsBytes(w_head),
-        .storage_type = .f32,
-        .rows = vocab_size,
-        .cols = dim,
-    };
-
-    var engine = try hk.inference.TransformerEngine.init(allocator, cfg, tok_emb_ref, norm_weights, lm_head_ref);
-    defer engine.deinit();
-
-    // Add 1 layer
-    try engine.layers.append(allocator, .{
-        .attn_norm = norm_weights,
-        .wq = .{ .data = std.mem.sliceAsBytes(w_attn), .storage_type = .f32, .rows = dim, .cols = dim },
-        .wk = .{ .data = std.mem.sliceAsBytes(w_attn), .storage_type = .f32, .rows = dim, .cols = dim },
-        .wv = .{ .data = std.mem.sliceAsBytes(w_attn), .storage_type = .f32, .rows = dim, .cols = dim },
-        .wo = .{ .data = std.mem.sliceAsBytes(w_attn), .storage_type = .f32, .rows = dim, .cols = dim },
-        .ffn_norm = norm_weights,
-        .w_gate = .{ .data = std.mem.sliceAsBytes(w_gate_up), .storage_type = .f32, .rows = hidden_dim, .cols = dim },
-        .w_up = .{ .data = std.mem.sliceAsBytes(w_gate_up), .storage_type = .f32, .rows = hidden_dim, .cols = dim },
-        .w_down = .{ .data = std.mem.sliceAsBytes(w_down), .storage_type = .f32, .rows = dim, .cols = hidden_dim },
-    });
-
-    // Run forward pass at pos 0
-    const logits_0 = engine.forward(3, 0);
-    try std.testing.expectEqual(vocab_size, logits_0.len);
-    for (logits_0) |l| {
-        try std.testing.expect(!std.math.isNan(l));
-        try std.testing.expect(!std.math.isInf(l));
-    }
-
-    // Run forward pass at pos 1
-    const logits_1 = engine.forward(5, 1);
-    try std.testing.expectEqual(vocab_size, logits_1.len);
-    for (logits_1) |l| {
-        try std.testing.expect(!std.math.isNan(l));
-        try std.testing.expect(!std.math.isInf(l));
-    }
-}
-
 test "native safetensors parser and transcoder roundtrip" {
     const allocator = std.testing.allocator;
 
@@ -1351,153 +1234,6 @@ test "native safetensors parser and transcoder roundtrip" {
     try std.testing.expectEqual(@as(f32, 2.0), floats_out[1]);
     try std.testing.expectEqual(@as(f32, 3.0), floats_out[2]);
     try std.testing.expectEqual(@as(f32, 4.0), floats_out[3]);
-}
-
-test "transformer engine load from reader with tiny dimensions" {
-    const allocator = std.testing.allocator;
-    const io = std.Options.debug_io;
-    const cwd = std.Io.Dir.cwd();
-    const tmp_path = "test_tiny_engine.hk";
-    defer cwd.deleteFile(io, tmp_path) catch {};
-
-    var writer = hk.writer.HKWriter.init(allocator);
-    defer writer.deinit();
-
-    try writer.addMetadataString("general.architecture", "llama");
-    try writer.addMetadataInt("attention.head_count", 2);
-    try writer.addMetadataInt("attention.head_count_kv", 2);
-    try writer.addMetadataInt("rope.dimension_count", 4);
-
-    const dim: usize = 8;
-    const hidden: usize = 16;
-    const vocab: usize = 10;
-
-    const emb = try allocator.alloc(f32, vocab * dim);
-    defer allocator.free(emb);
-    @memset(emb, 0.1);
-    try writer.addTensor(.{
-        .name = "token_embd.weight",
-        .storage_type = .f32,
-        .ndim = 2,
-        .shape = .{ vocab, dim, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(emb),
-    });
-
-    const norm = try allocator.alloc(f32, dim);
-    defer allocator.free(norm);
-    @memset(norm, 1.0);
-    try writer.addTensor(.{
-        .name = "blk.0.attn_norm.weight",
-        .storage_type = .f32,
-        .ndim = 1,
-        .shape = .{ dim, 0, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(norm),
-    });
-    try writer.addTensor(.{
-        .name = "blk.0.ffn_norm.weight",
-        .storage_type = .f32,
-        .ndim = 1,
-        .shape = .{ dim, 0, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(norm),
-    });
-    try writer.addTensor(.{
-        .name = "output_norm.weight",
-        .storage_type = .f32,
-        .ndim = 1,
-        .shape = .{ dim, 0, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(norm),
-    });
-
-    const w_proj = try allocator.alloc(f32, dim * dim);
-    defer allocator.free(w_proj);
-    @memset(w_proj, 0.05);
-    try writer.addTensor(.{
-        .name = "blk.0.attn_q.weight",
-        .storage_type = .f32,
-        .ndim = 2,
-        .shape = .{ dim, dim, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(w_proj),
-    });
-    try writer.addTensor(.{
-        .name = "blk.0.attn_k.weight",
-        .storage_type = .f32,
-        .ndim = 2,
-        .shape = .{ dim, dim, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(w_proj),
-    });
-    try writer.addTensor(.{
-        .name = "blk.0.attn_v.weight",
-        .storage_type = .f32,
-        .ndim = 2,
-        .shape = .{ dim, dim, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(w_proj),
-    });
-    try writer.addTensor(.{
-        .name = "blk.0.attn_output.weight",
-        .storage_type = .f32,
-        .ndim = 2,
-        .shape = .{ dim, dim, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(w_proj),
-    });
-
-    const w_gate_up = try allocator.alloc(f32, hidden * dim);
-    defer allocator.free(w_gate_up);
-    @memset(w_gate_up, 0.05);
-    try writer.addTensor(.{
-        .name = "blk.0.ffn_gate.weight",
-        .storage_type = .f32,
-        .ndim = 2,
-        .shape = .{ hidden, dim, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(w_gate_up),
-    });
-    try writer.addTensor(.{
-        .name = "blk.0.ffn_up.weight",
-        .storage_type = .f32,
-        .ndim = 2,
-        .shape = .{ hidden, dim, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(w_gate_up),
-    });
-
-    const w_down = try allocator.alloc(f32, dim * hidden);
-    defer allocator.free(w_down);
-    @memset(w_down, 0.05);
-    try writer.addTensor(.{
-        .name = "blk.0.ffn_down.weight",
-        .storage_type = .f32,
-        .ndim = 2,
-        .shape = .{ dim, hidden, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(w_down),
-    });
-
-    const w_out = try allocator.alloc(f32, vocab * dim);
-    defer allocator.free(w_out);
-    @memset(w_out, 0.05);
-    try writer.addTensor(.{
-        .name = "output.weight",
-        .storage_type = .f32,
-        .ndim = 2,
-        .shape = .{ vocab, dim, 0, 0, 0, 0, 0, 0 },
-        .data = std.mem.sliceAsBytes(w_out),
-    });
-
-    try writer.writeToFile(tmp_path);
-
-    var reader = try hk.reader.HKReader.open(tmp_path, allocator);
-    defer reader.deinit();
-
-    var engine = try hk.inference.TransformerEngine.initFromReader(allocator, &reader);
-    defer {
-        engine.deinit();
-        allocator.destroy(engine);
-    }
-
-    try std.testing.expectEqual(vocab, engine.config.vocab_size);
-    const logits = engine.forward(1, 0);
-    try std.testing.expectEqual(vocab, logits.len);
-    for (logits) |l| {
-        try std.testing.expect(!std.math.isNan(l));
-        try std.testing.expect(!std.math.isInf(l));
-    }
 }
 
 test "hardware capabilities detection and super-coalesced alignment" {

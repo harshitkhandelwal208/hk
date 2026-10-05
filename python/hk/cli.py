@@ -1,198 +1,77 @@
 #!/usr/bin/env python3
-"""
-HK Neural Tensor Framework - Unified Python CLI Entrypoint.
-Provides command-line utilities for model inspection, GGUF transcoding,
-exporting, and GUI launching for pip-installed environments.
+"""The `hk` command of the Python package.
+
+The command line is implemented once, in the native `hk` executable (Zig). This entry point only
+finds that executable and runs it, so `pip install hknt` and a source build behave the same and
+nothing is implemented twice. The one command that is not native is `gui`, which opens the Tk
+model editor and so has to run in Python.
 """
 
 import os
+import platform
+import subprocess
 import sys
-import argparse
-import time
 from pathlib import Path
 from typing import Optional
 
 
-import hk
-from hk import __version__
-from hk.gguf_parser import convert_gguf_to_hk, export_hk_to_gguf, GGUFReaderLight
-from hk.torch import safe_open
-
-
-def cmd_convert_gguf(args):
-    in_path = args.input
-    out_path = args.output
-    if not os.path.exists(in_path):
-        print(f"Error: Input file '{in_path}' does not exist.")
-        sys.exit(1)
-
-    in_size_mb = os.path.getsize(in_path) / (1024 * 1024)
-    print(f"[HK CLI] Ingesting GGUF container: {in_path} ({in_size_mb:.2f} MB)")
-    t0 = time.perf_counter()
-    convert_gguf_to_hk(in_path, out_path)
-    elapsed = (time.perf_counter() - t0) * 1000.0
-    out_size_mb = os.path.getsize(out_path) / (1024 * 1024)
-    print(f"[HK CLI] Zero-copy transplant complete in {elapsed:.2f} ms -> {out_path} ({out_size_mb:.2f} MB)")
-
-
-def cmd_export(args):
-    in_path = args.input
-    out_path = args.output
-    fmt = args.format.lower()
-    if not os.path.exists(in_path):
-        print(f"Error: Input file '{in_path}' does not exist.")
-        sys.exit(1)
-
-    print(f"[HK CLI] Exporting HK container '{in_path}' to format '{fmt}' -> {out_path}")
-    t0 = time.perf_counter()
-    if fmt == "gguf":
-        export_hk_to_gguf(in_path, out_path)
-    elif fmt == "safetensors":
-        from safetensors.torch import save_file as st_save
-        with safe_open(in_path, framework="pt") as reader:
-            tensors = {k: reader.get_tensor(k) for k in reader.keys()}
-        st_save(tensors, out_path)
-    else:
-        print(f"Error: Unsupported format '{fmt}'. Choose 'gguf' or 'safetensors'.")
-        sys.exit(1)
-
-    elapsed = (time.perf_counter() - t0) * 1000.0
-    out_size_mb = os.path.getsize(out_path) / (1024 * 1024)
-    print(f"[HK CLI] Exported successfully in {elapsed:.2f} ms ({out_size_mb:.2f} MB)")
-
-
-def cmd_inspect(args):
-    target = args.path
-    if not os.path.exists(target):
-        print(f"Error: File '{target}' does not exist.")
-        sys.exit(1)
-
-    file_size_mb = os.path.getsize(target) / (1024 * 1024)
-    with open(target, "rb") as f:
-        magic = f.read(4)
-
-    print("=" * 70)
-    print(f"  HK Model Inspector: {os.path.basename(target)} ({file_size_mb:.2f} MB)")
-    print("=" * 70)
-
-    if magic == b"HK01":
-        with safe_open(target, framework="pt") as f:
-            meta = f.metadata()
-            keys = f.keys()
-            print(f"Format:       HK Neural Tensor Container (v1.0)")
-            print(f"Tensors:      {len(keys)}")
-            print(f"Metadata KVs: {len(meta)}")
-            if meta:
-                print("\nMetadata:")
-                for k, v in list(meta.items())[:20]:
-                    v_str = str(v)
-                    if len(v_str) > 60:
-                        v_str = v_str[:57] + "..."
-                    print(f"  - {k}: {v_str}")
-                if len(meta) > 20:
-                    print(f"  ... and {len(meta) - 20} more keys")
-
-            print("\nTensors:")
-            for name in keys[:25]:
-                t = f.get_tensor(name)
-                print(f"  - {name:<40} shape={str(list(t.shape)):<18} dtype={str(t.dtype).replace('torch.', '')}")
-            if len(keys) > 25:
-                print(f"  ... and {len(keys) - 25} more tensors")
-
-    elif magic == b"GGUF":
-        reader = GGUFReaderLight(target)
-        print(f"Format:       GGUF (v{reader.version})")
-        print(f"Tensors:      {len(reader.tensors)}")
-        print(f"Metadata KVs: {len(reader.metadata)}")
-        if reader.metadata:
-            print("\nMetadata:")
-            for k, v in list(reader.metadata.items())[:20]:
-                v_str = str(v)
-                if len(v_str) > 60:
-                    v_str = v_str[:57] + "..."
-                print(f"  - {k}: {v_str}")
-            if len(reader.metadata) > 20:
-                print(f"  ... and {len(reader.metadata) - 20} more keys")
-
-        print("\nTensors:")
-        for name, desc in list(reader.tensors.items())[:25]:
-            print(f"  - {name:<40} shape={str(desc.shape):<18} type={desc.ggml_type} ({desc.size / 1024:.1f} KB)")
-        if len(reader.tensors) > 25:
-            print(f"  ... and {len(reader.tensors) - 25} more tensors")
-    else:
-        print(f"Unrecognized magic bytes: {magic}. Expected HK01 or GGUF.")
-
-
-def cmd_gui(args):
-    from hk.gui import launch_gui
-    launch_gui(args.file)
+def _candidate_names() -> list:
+    """File names the native executable can have: a plain build, or a release asset such as
+    `hk-x86_64-linux` (which is how the release workflow names the binaries it bundles)."""
+    machine = platform.machine().lower()
+    arch = "aarch64" if ("arm" in machine or "aarch64" in machine) else "x86_64"
+    system = platform.system().lower()
+    os_name = "windows" if system == "windows" else ("macos" if system == "darwin" else "linux")
+    suffix = ".exe" if os_name == "windows" else ""
+    return [f"hk-{arch}-{os_name}{suffix}", "hk.exe", "hk"]
 
 
 def _find_native_cli() -> Optional[str]:
-    """Locates the compiled standalone native Zig HK executable."""
+    """Locates the compiled native `hk` executable."""
+    here = Path(__file__).resolve().parent
     search_dirs = [
-        Path(__file__).resolve().parent,
-        Path(__file__).resolve().parent / "bin",
-        Path(__file__).resolve().parent.parent.parent / "zig-out" / "bin",
+        here,
+        here / "bin",
+        here.parent.parent / "zig-out" / "bin",
         Path(os.getcwd()) / "zig-out" / "bin",
     ]
-    exe_names = ["hk.exe", "hk"]
+    env_dir = os.environ.get("HK_BIN_DIR")
+    if env_dir:
+        search_dirs.insert(0, Path(env_dir))
     for d in search_dirs:
-        for name in exe_names:
+        for name in _candidate_names():
             candidate = d / name
-            if candidate.is_file():
+            if not candidate.is_file():
+                continue
+            if not os.access(candidate, os.X_OK):
+                # Wheels do not keep the executable bit, so restore it on the bundled binary.
+                try:
+                    os.chmod(candidate, candidate.stat().st_mode | 0o111)
+                except OSError:
+                    continue
+            if os.access(candidate, os.X_OK):
                 return str(candidate)
+    # A different program called `hk` earlier on PATH is not ours, so PATH is not searched.
     return None
 
 
-def main():
-    # If not requesting python-specific GUI command, check for compiled native Zig binary
-    if len(sys.argv) > 1 and sys.argv[1] not in ("gui", "--help", "-h"):
-        native_cli = _find_native_cli()
-        if native_cli is not None:
-            import subprocess
-            try:
-                ret = subprocess.call([native_cli] + sys.argv[1:])
-                sys.exit(ret)
-            except Exception:
-                pass
+def main() -> None:
+    argv = sys.argv[1:]
+    if argv and argv[0] == "gui":
+        from hk.gui import launch_gui
 
-    parser = argparse.ArgumentParser(
-        prog="hk",
-        description=f"HK Neural Tensor Framework CLI v{__version__}",
-    )
-    parser.add_argument("--version", action="version", version=f"hk {__version__}")
-    subparsers = parser.add_subparsers(dest="command")
+        launch_gui(argv[1] if len(argv) > 1 else None)
+        return
 
-    # convert-gguf
-    p_conv = subparsers.add_parser("convert-gguf", help="Convert/transcode a GGUF model to HK format")
-    p_conv.add_argument("input", help="Path to input .gguf file")
-    p_conv.add_argument("output", help="Path to output .hk file")
-    p_conv.set_defaults(func=cmd_convert_gguf)
-
-    # export
-    p_exp = subparsers.add_parser("export", help="Export HK container to GGUF or Safetensors")
-    p_exp.add_argument("input", help="Path to input .hk file")
-    p_exp.add_argument("output", help="Path to output file")
-    p_exp.add_argument("-f", "--format", default="gguf", choices=["gguf", "safetensors"], help="Target format")
-    p_exp.set_defaults(func=cmd_export)
-
-    # inspect
-    p_insp = subparsers.add_parser("inspect", help="Inspect container header, metadata, and tensors")
-    p_insp.add_argument("path", help="Path to .hk or .gguf file")
-    p_insp.set_defaults(func=cmd_inspect)
-
-    # gui
-    p_gui = subparsers.add_parser("gui", help="Launch visual HK Model Studio GUI")
-    p_gui.add_argument("file", nargs="?", default=None, help="Optional model file to open")
-    p_gui.set_defaults(func=cmd_gui)
-
-    args = parser.parse_args()
-    if not hasattr(args, "func"):
-        parser.print_help()
-        sys.exit(0)
-
-    args.func(args)
+    native = _find_native_cli()
+    if native is None:
+        sys.stderr.write(
+            "hk: the native `hk` executable was not found next to this package.\n"
+            "    Download it from https://github.com/harshitkhandelwal208/hk/releases,\n"
+            "    or build it with `zig build -Doptimize=ReleaseFast` and set HK_BIN_DIR=zig-out/bin.\n"
+        )
+        sys.exit(127)
+    sys.exit(subprocess.call([native] + argv))
 
 
 if __name__ == "__main__":

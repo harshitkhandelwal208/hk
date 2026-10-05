@@ -314,7 +314,7 @@ pub const QK8_0: usize = 32;
 /// 2-byte FP16 scale + 16 bytes of 4-bit nibbles (low nibble 0..15, high nibble 16..31).
 pub const BlockQ4_0 = extern struct {
     d: f16 = 0,
-    qs: [16]u8 = [_]u8{0} ** 16,
+    qs: [16]u8 = @as([16]u8, @splat(0)),
 };
 
 comptime {
@@ -376,7 +376,7 @@ pub fn dequantizeBlockQ4_0(block: *const BlockQ4_0, count: usize, out: []f32) vo
 /// 2-byte FP16 scale + 32 bytes of 8-bit signed integers.
 pub const BlockQ8_0 = extern struct {
     d: f16 = 0,
-    qs: [32]i8 = [_]i8{0} ** 32,
+    qs: [32]i8 = @as([32]i8, @splat(0)),
 };
 
 comptime {
@@ -441,8 +441,8 @@ pub const QK_K: usize = 256;
 pub const BlockQ4_K = extern struct {
     d: f16 = 0,
     dmin: f16 = 0,
-    scales: [12]u8 = [_]u8{0} ** 12,
-    qs: [QK_K / 2]u8 = [_]u8{0} ** (QK_K / 2),
+    scales: [12]u8 = @as([12]u8, @splat(0)),
+    qs: [QK_K / 2]u8 = @as([QK_K / 2]u8, @splat(0)),
 };
 
 pub fn quantizeSuperBlockQ4_K(weights: []const f32, block: *BlockQ4_K) void {
@@ -508,8 +508,8 @@ pub fn dequantizeSuperBlockQ4_K(block: *const BlockQ4_K, count: usize, out: []f3
 /// Q8_K: 256 weights per super-block (8-bit quantization with super-scale)
 pub const BlockQ8_K = extern struct {
     d: f32 = 0,
-    qs: [QK_K]i8 = [_]i8{0} ** QK_K,
-    bsums: [16]i16 = [_]i16{0} ** 16,
+    qs: [QK_K]i8 = @as([QK_K]i8, @splat(0)),
+    bsums: [16]i16 = @as([16]i16, @splat(0)),
 };
 
 pub fn quantizeSuperBlockQ8_K(weights: []const f32, block: *BlockQ8_K) void {
@@ -589,9 +589,9 @@ pub fn setScaleMinK4(sc: *const [8]u8, min: *const [8]u8, scales: *[12]u8) void 
 pub const BlockQ5_K = extern struct {
     d: f16 = 0,
     dmin: f16 = 0,
-    scales: [12]u8 = [_]u8{0} ** 12,
-    qh: [32]u8 = [_]u8{0} ** 32,
-    qs: [QK_K / 2]u8 = [_]u8{0} ** (QK_K / 2),
+    scales: [12]u8 = @as([12]u8, @splat(0)),
+    qh: [32]u8 = @as([32]u8, @splat(0)),
+    qs: [QK_K / 2]u8 = @as([QK_K / 2]u8, @splat(0)),
 };
 
 comptime {
@@ -649,8 +649,8 @@ pub fn quantizeSuperBlockQ5_K(weights: []const f32, block: *BlockQ5_K) void {
     const dmin_eff = if (dmin_val == 0) 1e-8 else dmin_val;
     block.dmin = @floatCast(dmin_eff);
 
-    var sc: [8]u8 = [_]u8{0} ** 8;
-    var min: [8]u8 = [_]u8{0} ** 8;
+    var sc: [8]u8 = @as([8]u8, @splat(0));
+    var min: [8]u8 = @as([8]u8, @splat(0));
     for (0..8) |sb| {
         const r = sb_max[sb] - sb_min[sb];
         const sc_f = std.math.clamp(@round(r / (31.0 * d_eff)), 0.0, 63.0);
@@ -726,9 +726,9 @@ pub fn dequantizeSuperBlockQ5_K(block: *const BlockQ5_K, count: usize, out: []f3
 /// Q3_K: 256 weights per super-block (16 sub-blocks of 16 weights).
 /// 110 bytes total: hmask (32) + qs (64) + scales (12) + d (2).
 pub const BlockQ3_K = extern struct {
-    hmask: [32]u8 = [_]u8{0} ** 32,
-    qs: [QK_K / 4]u8 = [_]u8{0} ** (QK_K / 4),
-    scales: [12]u8 = [_]u8{0} ** 12,
+    hmask: [32]u8 = @as([32]u8, @splat(0)),
+    qs: [QK_K / 4]u8 = @as([QK_K / 4]u8, @splat(0)),
+    scales: [12]u8 = @as([12]u8, @splat(0)),
     d: f16 = 0,
 };
 
@@ -752,7 +752,7 @@ pub fn quantizeSuperBlockQ3_K(weights: []const f32, block: *BlockQ3_K) void {
         return;
     }
 
-    var sb_max: [16]f32 = [_]f32{0.0} ** 16;
+    var sb_max: [16]f32 = @as([16]f32, @splat(0.0));
     for (0..16) |sb| {
         const start = sb * 16;
         const end = @min(start + 16, weights.len);
@@ -880,9 +880,9 @@ pub fn dequantizeSuperBlockQ3_K(block: *const BlockQ3_K, count: usize, out: []f3
 
 /// Q6_K: 256 weights per super-block (6 bits per weight: 4-bit low + 2-bit high)
 pub const BlockQ6_K = extern struct {
-    ql: [QK_K / 2]u8 = [_]u8{0} ** (QK_K / 2),
-    qh: [QK_K / 4]u8 = [_]u8{0} ** (QK_K / 4),
-    scales: [16]i8 = [_]i8{0} ** 16,
+    ql: [QK_K / 2]u8 = @as([QK_K / 2]u8, @splat(0)),
+    qh: [QK_K / 4]u8 = @as([QK_K / 4]u8, @splat(0)),
+    scales: [16]i8 = @as([16]i8, @splat(0)),
     d: f16 = 0,
 };
 
@@ -906,7 +906,7 @@ pub fn quantizeSuperBlockQ6_K(weights: []const f32, block: *BlockQ6_K) void {
         return;
     }
 
-    var sb_max: [16]f32 = [_]f32{0.0} ** 16;
+    var sb_max: [16]f32 = @as([16]f32, @splat(0.0));
     for (0..16) |sb| {
         const start = sb * 16;
         const end = @min(start + 16, weights.len);
@@ -1000,8 +1000,8 @@ pub fn dequantizeSuperBlockQ6_K(block: *const BlockQ6_K, count: usize, out: []f3
 
 /// Q2_K: 256 weights per super-block (2 bits per weight + 16 sub-block scales/mins)
 pub const BlockQ2_K = extern struct {
-    scales: [16]u8 = [_]u8{0} ** 16,
-    qs: [QK_K / 4]u8 = [_]u8{0} ** (QK_K / 4),
+    scales: [16]u8 = @as([16]u8, @splat(0)),
+    qs: [QK_K / 4]u8 = @as([QK_K / 4]u8, @splat(0)),
     d: f16 = 0,
     dmin: f16 = 0,
 };

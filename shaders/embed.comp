@@ -1,0 +1,19 @@
+#version 450
+// x[t][:] = row `token[t]` of the embedding matrix, decoded to f32.
+
+layout(local_size_x = 128) in;
+layout(std430, binding = 0) readonly buffer W { uint w32[]; };
+layout(std430, binding = 5) readonly buffer X4 { vec4 x4[]; };
+layout(std430, binding = 1) readonly buffer Tok { uint tokens[]; };
+layout(std430, binding = 2) writeonly buffer X { float x[]; };
+layout(push_constant) uniform P { uint dim; uint row_bytes; } p;
+
+#include "common.glsl"
+
+void main() {
+    uint t = gl_WorkGroupID.y;
+    uint k = gl_GlobalInvocationID.x;
+    if (k >= p.dim) return;
+    uint o = tokens[t] * p.row_bytes + (k / ELEMS) * BYTES;
+    x[t * p.dim + k] = dq(o, k % ELEMS);
+}

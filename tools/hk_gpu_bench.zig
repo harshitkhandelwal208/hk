@@ -213,31 +213,4 @@ pub fn main(init: std.process.Init) !void {
             !any_nonfinite,
         },
     );
-
-    // End-to-end full TransformerEngine inference (RMSNorm, RoPE, Attention, SwiGLU on GPU)
-    std.debug.print("\n== End-to-end TransformerEngine forward pass (full GPU offload) ==\n", .{});
-    var engine = hk.inference.TransformerEngine.initFromReaderWithOptions(allocator, &reader, .{}) catch |err| {
-        std.debug.print("Failed to initialize engine on GPU: {}\n", .{err});
-        return;
-    };
-    defer {
-        engine.deinit();
-        allocator.destroy(engine);
-    }
-
-    std.debug.print("  engine offload   : {}/{} layers on GPU\n", .{ engine.n_gpu_layers, engine.config.n_layers });
-    const e2e_start = std.Io.Clock.Timestamp.now(io, .awake);
-    const warmup_tokens: usize = 10;
-    var last_l: []const f32 = &[_]f32{};
-    for (0..warmup_tokens) |pos| {
-        last_l = engine.forward(100 + @as(u32, @intCast(pos)), pos);
-    }
-    const e2e_ns: i96 = e2e_start.untilNow(io).raw.nanoseconds;
-    const e2e_ms = @as(f64, @floatFromInt(e2e_ns)) / 1e6;
-    const e2e_tok_s = (@as(f64, @floatFromInt(warmup_tokens)) * 1000.0) / e2e_ms;
-    std.debug.print("  tokens generated : {d}\n  wall time        : {d:.3} ms\n  throughput       : {d:.2} tok/s\n", .{
-        warmup_tokens,
-        e2e_ms,
-        e2e_tok_s,
-    });
 }

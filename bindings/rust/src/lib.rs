@@ -30,6 +30,10 @@ pub enum StorageType {
     DQT = 0x14,
     Q4_0 = 0x15,
     Q8_0 = 0x16,
+    Q4_1 = 0x17,
+    Q5_0 = 0x18,
+    Q5_1 = 0x19,
+    Q8_1 = 0x1A,
     SparseF16 = 0x20,
     SparseDQ8 = 0x21,
     Sparse24 = 0x22,
@@ -50,6 +54,8 @@ pub enum StorageType {
     IQ3_XXS = 0x54,
     IQ4_NL = 0x55,
     IQ4_XS = 0x56,
+    IQ2_S = 0x57,
+    IQ3_S = 0x58,
     TQ1_0 = 0x60,
     TQ2_0 = 0x61,
     MXFP4 = 0x62,
@@ -341,6 +347,7 @@ extern "C" {
     fn hk_is_universal_page_aligned(reader: *const HkReaderOpaque) -> c_int;
     fn hk_get_file_alignment(reader: *const HkReaderOpaque) -> u32;
     fn hk_get_tensor_raw_ptr(reader: *const HkReaderOpaque, index: u64, out_size: *mut u64) -> *const c_void;
+    #[allow(dead_code)]
     fn hk_get_raw_buffer(reader: *const HkReaderOpaque, out_size: *mut u64) -> *const c_void;
 
     // Raw Weights Linear Algebra
@@ -391,6 +398,10 @@ impl<'a> HkTensor<'a> {
             0x14 => StorageType::DQT,
             0x15 => StorageType::Q4_0,
             0x16 => StorageType::Q8_0,
+            0x17 => StorageType::Q4_1,
+            0x18 => StorageType::Q5_0,
+            0x19 => StorageType::Q5_1,
+            0x1A => StorageType::Q8_1,
             0x20 => StorageType::SparseF16,
             0x21 => StorageType::SparseDQ8,
             0x22 => StorageType::Sparse24,
@@ -411,6 +422,8 @@ impl<'a> HkTensor<'a> {
             0x54 => StorageType::IQ3_XXS,
             0x55 => StorageType::IQ4_NL,
             0x56 => StorageType::IQ4_XS,
+            0x57 => StorageType::IQ2_S,
+            0x58 => StorageType::IQ3_S,
             0x60 => StorageType::TQ1_0,
             0x61 => StorageType::TQ2_0,
             0x62 => StorageType::MXFP4,
@@ -575,6 +588,8 @@ pub struct AppendixEntry {
     pub name: String,
     pub target: String,
     pub data_size: u64,
+    /// A copy of the record's payload.
+    pub data: Vec<u8>,
 }
 
 pub struct HkModel {
@@ -697,6 +712,11 @@ impl HkModel {
             name,
             target,
             data_size: c_entry.data_size,
+            data: if c_entry.data.is_null() || c_entry.data_size == 0 {
+                Vec::new()
+            } else {
+                unsafe { std::slice::from_raw_parts(c_entry.data as *const u8, c_entry.data_size as usize).to_vec() }
+            },
         })
     }
 

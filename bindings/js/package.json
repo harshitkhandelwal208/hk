@@ -1,7 +1,7 @@
 {
   "name": "hkntf",
-  "version": "1.1.0",
-  "description": "TypeScript / JavaScript bindings for the HK neural tensor format and SIMD compute engine.",
+  "version": "1.1.1",
+  "description": "TypeScript / JavaScript reader and writer for the HK neural tensor format.",
   "type": "module",
   "main": "dist/hk.js",
   "types": "dist/hk.d.ts",
@@ -13,7 +13,8 @@
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "tsc",
+    "test": "tsc && node test/test.mjs"
   },
   "repository": {
     "type": "git",
@@ -39,5 +40,11 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "typescript": "^5.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/hk.d.ts",
+      "import": "./dist/hk.js"
+    }
   }
 }

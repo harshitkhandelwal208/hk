@@ -1,227 +1,97 @@
-# HK Standalone CLI Reference
-
-I wrote the compiled native `hk` executable in Zig as a self-contained developer tool. It starts in under 55 milliseconds, uses less than 3 MB of idle RAM, and provides complete inspection, conversion, execution, and expansion capabilities.
-
----
-
-## Command Overview
+# CLI Reference
 
 ```bash
-hk <subcommand> [arguments...] [options...]
+hk <command> [arguments]
+hk help
 ```
 
-| Subcommand | Description |
-| :--- | :--- |
-| `hardware-profile` | Probe host CPU vector extensions, vendor, and optimal memory page alignment. |
-| `inspect` | Dump container header, TOC entries, storage types, and alignment details. |
-| `verify` | Check container integrity, 128-byte Tensor Core alignment, and checksums. |
-| `metadata set` | In-place microsecond metadata update without rewriting weights. |
-| `expand` | Native vocabulary expansion and SwiGLU MLP width expansion (Net2WiderNet). |
-| `benchmark` | Measure zero-copy mapping, first-touch page faults, memory bus throughput, and SIMD GEMV. |
-| `appendix list` | Display version DAG records, generation indexes, loss, and parent hashes. |
-| `rollback` | Instantly rollback a model container to a previous generation state. |
-| `convert-gguf` | Transcode a GGUF file to an HK container. |
-| `convert-safetensors`| Transcode a SafeTensors checkpoint to an HK container. |
-| `export` | Export an HK container to legacy formats (SafeTensors or GGUF). |
-| `run` | Run non-interactive autoregressive text generation from a prompt. |
-| `chat` | Start an interactive terminal chat REPL with embedded template rendering. |
-| `gui` | Launch the visual HK Model Studio graphical interface. |
-| `hash` | Compute streaming cryptographic SHA-256 hash of the container. |
+`hk` is one executable. It needs no Python, no GPU toolkit and no configuration. Commands that take a model accept a `.hk` file or a Hub reference (`owner/name[:quant]`); a reference is pulled first if it is not cached yet.
 
----
+## Running models
 
-## Subcommand Details and Examples
+### `hk run <model> [prompt | -p TEXT] [options]`
 
-### 1. `hardware-profile`
-Probes your system hardware and displays supported instruction sets:
+Generates text. Text goes to standard output, statistics to standard error, so the output can be piped.
 
-```bash
-hk hardware-profile
-```
+| Option | Meaning | Default |
+|:---|:---|:---|
+| `-p, --prompt TEXT` | text to continue (a bare argument works too; quote it) | none |
+| `--chat` | wrap the prompt as one user message using the model's chat template | off |
+| `-n, --max-tokens N` | most tokens to generate | 128 |
+| `--temp T` | temperature; `0` takes the most likely token | 0.8 |
+| `--top-k N` | keep the N most likely tokens, `0` for no limit | 40 |
+| `--top-p P` | nucleus sampling, `1` disables | 0.95 |
+| `--min-p P` | drop tokens below P times the best one | 0.05 |
+| `--repeat-penalty X` | penalty for recent tokens, `1` disables | 1.0 |
+| `--seed N` | random seed, `0` uses the clock | 0 |
+| `--threads N` | compute threads | physical cores |
+| `-ngl, --gpu-layers N` | run on a GPU (Vulkan) when N > 0; also `HK_GPU=1` | CPU |
 
-Sample output:
-```
-================================================================================
-HK HARDWARE PROFILE & SILICON ALIGNMENT AUDIT
-================================================================================
-Host Architecture      : x86_64
-Operating System       : Windows
-Optimal Page Alignment : 4096 bytes (4 KB)
-Hugepage DMA Alignment : 65536 bytes (64 KB)
-Vector Features        : AVX2: YES | AVX-512F: YES | AVX-512-VNNI: YES | AMX: NO
-Universal Compatibility: YES (4096 is divisible by 128 - Tensor Core ready)
-```
+Every flag is checked before the model is opened, and an unknown or malformed one is an error, never a silent default. With `--temp 0` the output is deterministic.
 
----
+### `hk chat <model> [options]`
 
-### 2. `inspect`
-Dumps the complete Table of Contents and file header:
+An interactive session with the model's chat template and history kept across turns. Takes the sampling options of `run` (not `-p` or `--chat`) and `-n` (default 1024). An empty line ends the session.
 
-```bash
-hk inspect model.hk
-```
+### `hk serve <model> [options]`
 
-Add `--verbose` to see every single tensor offset, dimensions, and storage types.
+An OpenAI compatible HTTP server. See [Inference and Serving](Inference-and-Serving.md).
 
----
+## Getting models
 
-### 3. `verify`
-Audits the physical file alignment and container checksums:
+| Command | |
+|:---|:---|
+| `hk pull <owner/name>[:quant] [--force] [--revision REF]` | download and convert, see [Downloading Models](Downloading-Models.md) |
+| `hk search <query> [--limit N] [--all]` | search the Hub |
+| `hk list` | show cached models |
+| `hk rm <owner/name>` | delete a cached model |
+| `hk convert-gguf <in.gguf> <out.hk>` | convert a GGUF file; block formats are carried over byte for byte |
+| `hk convert-safetensors <in.safetensors> <out.hk> [f32\|q4_0\|q8_0]` | convert one safetensors file, optionally quantizing |
+| `hk export -f gguf <in.hk> <out.gguf>` | write a GGUF v3 file |
+| `hk export -f safetensors <in.hk> <out.safetensors>` | write safetensors; float tensors keep their type, quantized ones are decoded and stored as F16 |
 
-```bash
-hk verify model.hk
-```
+Tensor names are kept as they are in the container, so a model converted from GGUF exports with GGUF names.
 
-Checks:
-- Magic bytes match `"HKNT"`.
-- Table of Contents checksum matches header.
-- Every single tensor payload starts on a multiple of `header.alignment` (128B, 4KB, or 16KB).
-- Flags are consistent with payload data.
+## Looking at a container
 
----
+| Command | |
+|:---|:---|
+| `hk inspect <file.hk>` | header, metadata and the tensor table |
+| `hk dump <file.hk>` | the header field by field, with offsets |
+| `hk verify <file.hk>` | check the magic, version and the alignment of the payload |
+| `hk hash <file.hk>` | SHA-256 of the container and of every tensor |
+| `hk eval <file.hk>` | parameter count, value range, NaN and Inf count |
+| `hk tokenize <file.hk> "text"` | token ids using the vocabulary stored in the file |
+| `hk detokenize <file.hk> <id> ...` | text from token ids |
+| `hk metadata list <file.hk>` / `get` / `set <key> <value>` | read or change metadata in place; the weights are not rewritten |
+| `hk hardware-profile` | what the processor offers, which kernels are in use, whether a GPU is usable |
+| `hk benchmark <file.hk>` | time to open the file, resolve tensors, touch every page, decode a tensor |
 
-### 4. `metadata set`
-Updates metadata fields in place without rewriting weights:
+## Editing containers (research features)
 
-```bash
-# Update model version string
-hk metadata set model.hk general.version "2.0.0"
+| Command | |
+|:---|:---|
+| `hk expand <in> <out> [--vocab N] [--width R]` | grow the vocabulary and the MLP width of a float model; see [Dynamic Architecture Growth](Dynamic-Architecture-Growth.md) |
+| `hk prune <in> <out> [ratio]` | magnitude pruning |
+| `hk retile <in> <out> [tile_16x16\|row_major]` | change the layout of 2-D tensors |
+| `hk appendix <file.hk>` | list the version history stored in the file |
+| `hk rollback <file.hk> [generation]` | cut the version history back; this truncates the file |
+| `hk convert-endian <in> <out>` | byte swap a container |
+| `hk gui [file.hk]` | the Tk model editor (needs Python and Tk) |
 
-# Update author string
-hk metadata set model.hk general.author "Harshit"
+`hk expand` refuses quantized models, and says so when no tensor name matched (it looks for Hugging Face style names).
 
-# Update Jinja2 chat template
-hk metadata set model.hk tokenizer.chat_template "{% for message in messages %}..."
-```
+## Environment
 
----
+| Variable | Effect |
+|:---|:---|
+| `HK_HOME` | model cache directory |
+| `HF_TOKEN`, `HF_ENDPOINT`, `HK_HTTP_BACKOFF_MS` | downloads, see [Downloading Models](Downloading-Models.md) |
+| `HK_GPU=1` | use the GPU when possible, without `-ngl` |
+| `HK_KERNELS=<level>` | force an instruction set level (for example `avx2` or `generic`); useful for testing and measuring |
+| `HK_THREADS=N` | thread count for the developer tools |
+| `HK_API_KEY` | API key for `hk serve` |
 
-### 5. `expand`
-Expands intermediate layer width (Net2WiderNet) and token vocabulary:
+## Exit status
 
-```bash
-# Widen SwiGLU MLPs by 25% and increase vocabulary to 32,500
-hk expand input.hk output.hk --width 1.25 --vocab 32500
-```
-
-Flags:
-- `--width <float>`: Multiplier for feed-forward intermediate size (e.g. `1.25` for +25%).
-- `--vocab <int>`: New target vocabulary size.
-- `--noise-std <float>`: Initialization noise (default: `0.0` for bit-exact function preservation).
-
----
-
-### 6. `benchmark`
-Profiles memory traversal and compute throughput:
-
-```bash
-hk benchmark model.hk
-```
-
-Measures:
-- Zero-copy virtual memory descriptor mapping latency.
-- Lazy slice pointer resolution rate.
-- Physical storage first-touch paging throughput (NVMe to RAM).
-- Resident warm memory streaming rate.
-- Register-unrolled SIMD GEMV compute throughput.
-
----
-
-### 7. `appendix list`
-Lists all version lineage records stored in the file:
-
-```bash
-hk appendix list model.hk
-```
-
-Displays generational indexes, record types, global steps, evaluation metrics, and parent hashes.
-
----
-
-### 8. `rollback`
-Restores container state to an earlier generation:
-
-```bash
-hk rollback model.hk --generation 1
-```
-
-Executes in under 1 millisecond. The Table of Contents is adjusted to point to the generation state requested.
-
----
-
-### 9. `convert-gguf`
-Converts a GGUF file directly to HK:
-
-```bash
-hk convert-gguf llama-3-8b.gguf llama-3-8b.hk
-```
-
-Preserves all metadata, tokenizers, and tensor layouts in a single streaming pass.
-
----
-
-### 10. `convert-safetensors`
-Converts a SafeTensors checkpoint to HK:
-
-```bash
-hk convert-safetensors model.safetensors model.hk
-```
-
----
-
-### 11. `export`
-Exports an HK container back into GGUF or SafeTensors:
-
-```bash
-# Export to SafeTensors
-hk export -f safetensors model.hk exported.safetensors
-
-# Export to GGUF
-hk export -f gguf model.hk exported.gguf
-```
-
----
-
-### 12. `run`
-Runs fast command-line autoregressive inference:
-
-```bash
-hk run model.hk -p "Explain neural network weights" -n 128 --temp 0.7
-```
-
-Flags:
-- `-p, --prompt`: Input text prompt.
-- `-n, --n-predict`: Maximum tokens to generate (default: 128).
-- `-ngl, --n-gpu-layers`: Number of layers to offload to GPU.
-- `--temp`: Sampling temperature (default: `0.7`).
-- `--top-p`: Nucleus sampling cutoff (default: `0.9`).
-- `--top-k`: Top-K candidate pool size (default: `40`).
-
----
-
-### 13. `chat`
-Starts an interactive terminal chat session:
-
-```bash
-hk chat model.hk -ngl 16 --temp 0.7
-```
-
----
-
-### 14. `gui`
-Launches the HK Model Studio GUI for visual inspection:
-
-```bash
-hk gui model.hk
-```
-
-Opens a visual window displaying tensor distribution, weight histograms, metadata tree, and alignment status.
-
----
-
-### 15. `hash`
-Calculates the streaming SHA-256 hash of the model container:
-
-```bash
-hk hash model.hk
-```
+Zero on success, non-zero on any error. Messages for the user go to standard error.

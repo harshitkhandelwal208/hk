@@ -27,6 +27,10 @@ export enum StorageType {
   DQT = 0x14,
   Q4_0 = 0x15,
   Q8_0 = 0x16,
+  Q4_1 = 0x17,
+  Q5_0 = 0x18,
+  Q5_1 = 0x19,
+  Q8_1 = 0x1a,
   SparseF16 = 0x20,
   SparseDQ8 = 0x21,
   Sparse24 = 0x22,
@@ -47,6 +51,8 @@ export enum StorageType {
   IQ3_XXS = 0x54,
   IQ4_NL = 0x55,
   IQ4_XS = 0x56,
+  IQ2_S = 0x57,
+  IQ3_S = 0x58,
   TQ1_0 = 0x60,
   TQ2_0 = 0x61,
   MXFP4 = 0x62,
@@ -137,6 +143,16 @@ export interface AppendixEntry {
   target: string;
   dataOffset: number;
   dataSize: number;
+}
+
+/** IEEE half precision to number. */
+function halfToFloat(h: number): number {
+  const sign = h & 0x8000 ? -1 : 1;
+  const exp = (h >> 10) & 0x1f;
+  const frac = h & 0x3ff;
+  if (exp === 0) return sign * frac * 2 ** -24;
+  if (exp === 31) return frac ? NaN : sign * Infinity;
+  return sign * (1 + frac / 1024) * 2 ** (exp - 15);
 }
 
 export class HkModel {
@@ -313,6 +329,7 @@ export class HkModel {
 
         const dataOffset = aPos;
         aPos += dataSize;
+        aPos = Math.ceil(aPos / 8) * 8; // records are padded to 8 bytes
 
         this.appendixEntries.push({
           entryType: entryType as AppendixType,
@@ -425,7 +442,94 @@ export class HkModel {
       return output;
     }
 
-    return output;
+    if (entry.storageType === StorageType.F16) {
+      for (let i = 0; i < totalElements; i++) output[i] = halfToFloat(this.view.getUint16(entry.dataOffset + i * 2, true));
+      return output;
+    }
+
+    if (this.dequantizeLegacyBlocks(entry, totalElements, output)) {
+      return output;
+    }
+
+    // Anything else (K-quants, I-quants, ternary, MXFP4, sparse formats, ...) is not decoded in
+    // TypeScript. Failing is better than returning zeros that look like real weights.
+    throw new Error(
+      `dequantizeToF32: storage type ${StorageType[entry.storageType] ?? entry.storageType} is not supported by the TypeScript reader; use the native library`
+    );
+  }
+
+  /** Decodes the GGUF-compatible 32-element block formats. Returns false for other types. */
+  private dequantizeLegacyBlocks(entry: TensorEntry, total: number, out: Float32Array): boolean {
+    const v = this.view;
+    const base = entry.dataOffset;
+    const blocks = Math.ceil(total / 32);
+    const put = (b: number, j: number, x: number) => {
+      const idx = b * 32 + j;
+      if (idx < total) out[idx] = x;
+    };
+    switch (entry.storageType) {
+      case StorageType.Q8_0:
+        for (let b = 0; b < blocks; b++) {
+          const o = base + b * 34;
+          const d = halfToFloat(v.getUint16(o, true));
+          for (let j = 0; j < 32; j++) put(b, j, v.getInt8(o + 2 + j) * d);
+        }
+        return true;
+      case StorageType.Q4_0:
+        for (let b = 0; b < blocks; b++) {
+          const o = base + b * 18;
+          const d = halfToFloat(v.getUint16(o, true));
+          for (let j = 0; j < 16; j++) {
+            const q = v.getUint8(o + 2 + j);
+            put(b, j, ((q & 0x0f) - 8) * d);
+            put(b, j + 16, ((q >> 4) - 8) * d);
+          }
+        }
+        return true;
+      case StorageType.Q4_1:
+        for (let b = 0; b < blocks; b++) {
+          const o = base + b * 20;
+          const d = halfToFloat(v.getUint16(o, true));
+          const m = halfToFloat(v.getUint16(o + 2, true));
+          for (let j = 0; j < 16; j++) {
+            const q = v.getUint8(o + 4 + j);
+            put(b, j, (q & 0x0f) * d + m);
+            put(b, j + 16, (q >> 4) * d + m);
+          }
+        }
+        return true;
+      case StorageType.Q5_0:
+        for (let b = 0; b < blocks; b++) {
+          const o = base + b * 22;
+          const d = halfToFloat(v.getUint16(o, true));
+          const qh = v.getUint32(o + 2, true);
+          for (let j = 0; j < 16; j++) {
+            const q = v.getUint8(o + 6 + j);
+            const lo = (q & 0x0f) | (((qh >>> j) << 4) & 0x10);
+            const hi = (q >> 4) | ((qh >>> (j + 12)) & 0x10);
+            put(b, j, (lo - 16) * d);
+            put(b, j + 16, (hi - 16) * d);
+          }
+        }
+        return true;
+      case StorageType.Q5_1:
+        for (let b = 0; b < blocks; b++) {
+          const o = base + b * 24;
+          const d = halfToFloat(v.getUint16(o, true));
+          const m = halfToFloat(v.getUint16(o + 2, true));
+          const qh = v.getUint32(o + 4, true);
+          for (let j = 0; j < 16; j++) {
+            const q = v.getUint8(o + 8 + j);
+            const lo = (q & 0x0f) | (((qh >>> j) << 4) & 0x10);
+            const hi = (q >> 4) | ((qh >>> (j + 12)) & 0x10);
+            put(b, j, lo * d + m);
+            put(b, j + 16, hi * d + m);
+          }
+        }
+        return true;
+      default:
+        return false;
+    }
   }
 
   public isRawWeightStorage(): boolean {

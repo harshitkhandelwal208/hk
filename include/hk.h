@@ -41,6 +41,10 @@ typedef enum {
     HK_STORAGE_DQT = 0x14,
     HK_STORAGE_Q4_0 = 0x15,
     HK_STORAGE_Q8_0 = 0x16,
+    HK_STORAGE_Q4_1 = 0x17,
+    HK_STORAGE_Q5_0 = 0x18,
+    HK_STORAGE_Q5_1 = 0x19,
+    HK_STORAGE_Q8_1 = 0x1A,
     HK_STORAGE_SPARSE_F16 = 0x20,
     HK_STORAGE_SPARSE_DQ8 = 0x21,
     HK_STORAGE_SPARSE_2_4 = 0x22,
@@ -65,6 +69,8 @@ typedef enum {
     HK_STORAGE_IQ3_XXS = 0x54,
     HK_STORAGE_IQ4_NL = 0x55,
     HK_STORAGE_IQ4_XS = 0x56,
+    HK_STORAGE_IQ2_S = 0x57,
+    HK_STORAGE_IQ3_S = 0x58,
 
     // Microscaling & Ternary Formats
     HK_STORAGE_TQ1_0 = 0x60,
@@ -353,6 +359,7 @@ HK_API int hk_writer_add_metadata_string(hk_writer_t* writer, const char* key, c
 HK_API int hk_writer_add_metadata_int(hk_writer_t* writer, const char* key, int64_t val);
 HK_API int hk_writer_add_metadata_float(hk_writer_t* writer, const char* key, double val);
 HK_API int hk_writer_add_metadata_bool(hk_writer_t* writer, const char* key, int val);
+HK_API int hk_writer_add_metadata_json(hk_writer_t* writer, const char* key, const char* json);
 HK_API int hk_writer_add_tensor(
     hk_writer_t* writer,
     const char* name,
@@ -390,6 +397,28 @@ HK_API int hk_dequantize_block_q3_k(const void* in_block, uint32_t count, float*
 HK_API int hk_quantize_block_q6_k(const float* weights, uint32_t count, void* out_block);
 HK_API int hk_quantize_block_q2_k(const float* weights, uint32_t count, void* out_block);
 
+// Whole-tensor quantization. `count` must be a multiple of the format's block size
+// (32 for q4_0/q8_0, 256 for the K formats). Output buffers are sized by the caller.
+HK_API int hk_quantize_tensor_q4_0(const float* weights, uint64_t count, uint8_t* out_bytes);
+HK_API int hk_dequantize_tensor_q4_0(const uint8_t* in_bytes, uint64_t count, float* out_f32);
+HK_API int hk_quantize_tensor_q8_0(const float* weights, uint64_t count, uint8_t* out_bytes);
+HK_API int hk_dequantize_tensor_q8_0(const uint8_t* in_bytes, uint64_t count, float* out_f32);
+HK_API int hk_quantize_tensor_q2_k(const float* weights, uint64_t count, uint8_t* out_bytes);
+HK_API int hk_dequantize_tensor_q2_k(const uint8_t* in_bytes, uint64_t count, float* out_f32);
+HK_API int hk_quantize_tensor_q3_k(const float* weights, uint64_t count, uint8_t* out_bytes);
+HK_API int hk_dequantize_tensor_q3_k(const uint8_t* in_bytes, uint64_t count, float* out_f32);
+HK_API int hk_quantize_tensor_q4_k(const float* weights, uint64_t count, uint8_t* out_bytes);
+HK_API int hk_dequantize_tensor_q4_k(const uint8_t* in_bytes, uint64_t count, float* out_f32);
+HK_API int hk_quantize_tensor_q5_k(const float* weights, uint64_t count, uint8_t* out_bytes);
+HK_API int hk_dequantize_tensor_q5_k(const uint8_t* in_bytes, uint64_t count, float* out_f32);
+HK_API int hk_quantize_tensor_q6_k(const float* weights, uint64_t count, uint8_t* out_bytes);
+HK_API int hk_dequantize_tensor_q6_k(const uint8_t* in_bytes, uint64_t count, float* out_f32);
+HK_API int hk_quantize_tensor_q8_k(const float* weights, uint64_t count, uint8_t* out_bytes);
+HK_API int hk_dequantize_tensor_q8_k(const uint8_t* in_bytes, uint64_t count, float* out_f32);
+// NF4 with per-block f32 scales and an optional residual (pass NULL to skip).
+HK_API int hk_quantize_tensor_nf4(const float* weights, uint64_t count, uint32_t block_size, uint8_t* packed_out, float* scales_out, float* residual_out);
+HK_API int hk_dequantize_tensor_nf4(const uint8_t* packed_in, const float* scales_in, uint64_t count, uint32_t block_size, float* out_f32, const float* residual_in);
+
 // Packed-Weight SIMD GEMV Kernels
 HK_API int hk_gemv_q8_0(const void* w_packed, const float* x, const float* bias, float* out, uint64_t m, uint64_t k);
 HK_API int hk_gemv_q4_0(const void* w_packed, const float* x, const float* bias, float* out, uint64_t m, uint64_t k);
@@ -398,11 +427,14 @@ HK_API int hk_gemv_q4_k(const void* w_packed, const float* x, const float* bias,
 // Mathematical Tensor Transformations
 HK_API int hk_rope_permute_hf_to_gguf(const float* in_w, float* out_w, uint64_t n_heads, uint64_t head_dim, uint64_t batch_size);
 HK_API int hk_rope_unpermute_gguf_to_hf(const float* in_w, float* out_w, uint64_t n_heads, uint64_t head_dim, uint64_t batch_size);
-HK_API int hk_layernorm_offset(const float* in_w, float* out_w, uint64_t count, float offset);
+// Adds `offset` to `len` values in place (Gemma style norm weight offset; pass -1 to undo).
+HK_API void hk_layernorm_offset_f32(float* data, uint64_t len, float offset);
 
 // GGUF Transcoder C ABI
 HK_API int hk_convert_gguf(const char* in_gguf_path, const char* out_hk_path);
 HK_API int hk_export_gguf(const char* in_hk_path, const char* out_gguf_path);
+// Converts a .safetensors file to .hk, storing floats as `storage_type` (an hk_storage_type_t).
+HK_API int hk_convert_safetensors(const char* input_path, const char* output_path, uint8_t storage_type);
 
 // Hugging Face Architecture Mapper C ABI
 HK_API int hk_hf_detect_architecture(const char* json_config, char* out_arch, size_t max_len);
@@ -499,6 +531,37 @@ HK_API void hk_gemv_int8(const int8_t* w_i8, const float* x, float scale_w, cons
 HK_API float hk_dot_bf16(const uint16_t* a, const float* b, size_t len);
 HK_API float hk_dot_f16(const void* a, const float* b, size_t len);
 HK_API int32_t hk_dot_int8(const int8_t* a, const int8_t* b, size_t len);
+
+// Tokenizer. Reads the vocabulary stored in the container.
+// Not thread safe: use one tokenizer per thread, or serialise calls.
+typedef struct hk_tokenizer_t hk_tokenizer_t;
+HK_API hk_tokenizer_t* hk_tokenizer_load_from_file(const char* path);
+HK_API void hk_tokenizer_free(hk_tokenizer_t* tok);
+HK_API uint32_t hk_tokenizer_get_vocab_size(const hk_tokenizer_t* tok);
+// Returns the number of ids written, or 0 on failure. add_special adds BOS/EOS where the model
+// wants them. parse_special turns text such as "<|im_start|>" into control token ids.
+HK_API uint32_t hk_tokenizer_encode(hk_tokenizer_t* tok, const char* text, int add_special, int parse_special, uint32_t* out_ids, uint32_t max_ids);
+// Returns the number of bytes written (not NUL terminated).
+HK_API uint32_t hk_tokenizer_decode(const hk_tokenizer_t* tok, const uint32_t* ids, uint32_t num_ids, int show_special, uint8_t* out_buf, uint32_t max_len);
+
+// Inference engine (Llama, Qwen2 and Qwen3 style dense models). Weights are memory mapped.
+typedef struct hk_engine_t hk_engine_t;
+// Returns NULL on failure. hk_engine_last_error then holds the reason (not thread safe).
+HK_API hk_engine_t* hk_engine_load_from_file(const char* path);
+HK_API uint32_t hk_engine_last_error(char* out, uint32_t capacity);
+HK_API void hk_engine_free(hk_engine_t* engine);
+HK_API uint32_t hk_engine_get_vocab_size(const hk_engine_t* engine);
+HK_API uint32_t hk_engine_get_context_size(const hk_engine_t* engine);
+// Forget the conversation. The next call must start at position 0.
+HK_API void hk_engine_reset_cache(hk_engine_t* engine);
+// Feeds n tokens starting at position pos and writes the logits of the last one to out_logits
+// (vocabulary sized). Returns 0 on success, -1 for a null argument, -2 when the context window is
+// full, -3 when n exceeds the batch limit, -4 on any other failure.
+HK_API int hk_engine_forward_tokens(hk_engine_t* engine, const uint32_t* tokens, uint32_t n, uint32_t pos, float* out_logits);
+HK_API int hk_engine_forward(hk_engine_t* engine, uint32_t token, uint32_t pos, float* out_logits);
+
+// Sampling. logits is modified in place. temp 0 is greedy. seed 0 uses the clock.
+HK_API uint32_t hk_sample_token(float* logits, uint64_t vocab_size, float temp, uint32_t top_k, float top_p, float min_p, float repeat_penalty, const uint32_t* history, uint32_t history_len, uint64_t seed);
 
 #ifdef __cplusplus
 }

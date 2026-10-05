@@ -1,126 +1,82 @@
-# Raw Storage and Super-Coalesced Silicon Alignment
+# Raw Storage and Payload Alignment
 
-In this guide, I explain how I designed HK to achieve zero compute headroom and universal hardware alignment across NVIDIA, AMD, Intel, and Apple Silicon.
-
----
-
-## What Does Zero Compute Headroom Mean?
-
-When you run inference with traditional quantized formats (such as 4-bit or 8-bit GGUF files), every single forward pass requires a dequantization step:
-1. Load compressed blocks from memory into registers.
-2. Read block scales and offsets.
-3. Multiply each compressed nibble by its scale factor to reconstruct an approximate 16-bit or 32-bit float.
-4. Execute the actual matrix-vector multiplication (GEMV).
-
-This reconstruction step burns memory bandwidth and CPU/GPU compute cycles on every generated token.
-
-I built HK with a different design goal: **Zero Compute Headroom**. 
-
-In HK, full-precision and half-precision weights (`bfloat16`, `float16`, `float32`, `int8`) are saved as contiguous bit representations aligned directly with the host memory bus. When you load a model, the OS maps the file directly into virtual address space via `mmap` or `MapViewOfFile`. 
-
-There is:
-- Zero decoding overhead
-- Zero dequantization step
-- Zero Python heap allocation
-- Zero memory copying
-
-The CPU SIMD or GPU Tensor Core kernels read directly from the memory-mapped virtual address. The compute cores spend 100% of their execution time doing actual linear algebra rather than unpacking bytes.
+> **Status:** the container supports raw (unquantized) tensors and configurable payload alignment. What alignment buys you is narrower than earlier versions of this page claimed; this page states what the code does and what has been measured.
 
 ---
 
-## The Super-Coalesced Silicon Invariance
+## Raw storage
 
-Modern chips have very specific, non-negotiable memory alignment requirements for high-performance data transfers:
+`f32`, `f16`, `bf16`, `fp8`, integer and `bool` tensors are stored as their plain bit patterns. Opening a file maps it with `mmap` (`MapViewOfFile` on Windows); `HKReader.getRawF32/F16/BF16/Int8` return slices straight into the mapping, with no decode step and no copy. Pages are faulted in by the OS on first touch.
 
-1. NVIDIA GPUs (Tensor Cores & Warp Coalescing):
-   A warp consists of 32 threads. To fetch memory in a single bus transaction, the starting memory address must be aligned to a 128-byte boundary. Unaligned addresses split a single transaction into multiple serialized reads, cutting bandwidth in half.
+That is the full meaning of "zero decoding overhead": reading a raw tensor costs nothing beyond page faults. It does **not** mean inference with raw weights is free. A bf16 or f16 model is simply the largest and slowest-to-stream form, because decode speed is bounded by memory bandwidth (see [Benchmarks and Performance](Benchmarks-and-Performance)). Quantized formats move fewer bytes per token and are what the engine is tuned for; the engine decodes them inside its dot-product kernels, not as a separate dequantization pass.
 
-2. AMD GPUs (ROCm DirectGMA) and Intel CPUs:
-   Modern Linux and Windows kernels manage virtual memory in 4096-byte (4 KB) pages. Zero-copy Direct Memory Access (DMA) between storage controllers, host RAM, and PCIe devices requires 4KB alignment.
-
-3. Apple Silicon (M-Series Metal Unified Memory):
-   On macOS ARM64, the Metal API provides zero-copy buffer creation via `newBufferWithBytesNoCopy`. This API requires that the buffer pointer and its length be aligned to the macOS page boundary, which is 16384 bytes (16 KB).
-
-### The Mathematical Invariance
-
-Historically, developers had to build different files for different chips: one for Apple Metal, one for NVIDIA CUDA, and one for CPU servers.
-
-I solved this in HK using a simple mathematical truth:
-
-```
-4096 bytes  = 32 x 128 bytes
-16384 bytes = 128 x 128 bytes
-```
-
-Because 4096 and 16384 are exact integer multiples of 128:
-- A tensor payload aligned to 4096 bytes (4 KB) automatically satisfies NVIDIA's 128-byte warp coalescing.
-- A tensor payload aligned to 16384 bytes (16 KB) simultaneously satisfies Apple Metal zero-copy, AMD/Intel Direct DMA, and NVIDIA warp coalescing.
-
-A single `.hk` file can be opened on an Apple M3 MacBook, copied over to an NVIDIA RTX workstation, or loaded on an AMD Ryzen Linux server, and every single chip gets native, uncompromised, zero-copy alignment out of the box.
+Setting the header flag `RAW_WEIGHT_STORAGE` marks a file as holding raw weights. It is informational.
 
 ---
 
-## Virtual Deduplication: `SHARED_REF` and `NULL_REF`
+## Payload alignment
 
-Large language models frequently share weights between layers. For example, tied embedding models use the exact same weight matrix for both `model.embed_tokens.weight` and `lm_head.weight`.
+The writer starts every tensor payload (and each tensor's scale and residual buffers) on a multiple of the file's `alignment`, and records it in the header.
 
-In standard formats like SafeTensors, both matrices are often serialized separately, duplicating hundreds of megabytes of raw floats on disk.
+| Alignment | Preset | Intended for |
+| :--- | :--- | :--- |
+| 128 | `DEFAULT_ALIGNMENT_BYTES` | Default for files written by the Zig tools |
+| 4096 | `UNIVERSAL_PAGE_ALIGNMENT_BYTES` | Page-granular mapping on common x86-64 and Linux ARM systems. Default for Python `save_raw`. |
+| 16384 | `APPLE_SILICON_ALIGNMENT_BYTES` | 16 KiB pages (Apple Silicon) |
+| 65536 | `DIRECT_DMA_ALIGNMENT_BYTES` | 64 KiB allocation granularity (Windows) |
 
-HK eliminates this with virtual references:
+Because 4096 and 16384 are multiples of 128, a file aligned to either also satisfies 128-byte alignment. That arithmetic is the only "universal" property here.
 
-### `SHARED_REF` (0x31)
-When HK saves a model, it inspects the memory pointers (`data_ptr`) of each tensor. If two keys point to the exact same physical memory address, HK marks the second entry in the Table of Contents as `SHARED_REF` and points its `data_offset` directly to the first tensor.
-- On disk: Only one copy of the weight is stored.
-- On load: Both tensor names resolve to the exact same underlying memory-mapped pointer.
-- Result: Hundreds of megabytes saved without losing tied-weight identity.
+What is and isn't implemented:
 
-### `NULL_REF` (0x30)
-If you prune a layer, drop an unused attention projection, or zero out weights, HK marks the TOC entry as `NULL_REF`. The tensor name and metadata remain intact for architecture compatibility, but `data_size = 0`. Zero bytes of disk space are used.
+- **Implemented:** the writer honors the alignment; `hk verify` checks that all payloads start on a 128-byte boundary and fit inside the file; the header flags `TILE_ALIGNED`, `FLEXIBLE_ALIGNMENT` and `UNIVERSAL_PAGE_ALIGNED` reflect the chosen value.
+- **Not required by the engine.** CPU inference works with any alignment. The CPU kernels use unaligned loads, and the Vulkan backend copies weights into device buffers (re-laid out for the GPU) rather than using the mapped file in place.
+- **Not implemented:** zero-copy GPU buffer creation from the mapped file (for example Metal `newBufferWithBytesNoCopy`). There is no Metal, ROCm/HIP, CUDA or NPU backend in the engine, so alignment for those targets is a property of the file, not something any code here exploits. Whether page alignment makes a difference for a third-party runtime that does zero-copy mapping has not been measured.
+
+Choose the alignment for the file you will actually use: the default is fine for the engine; use 4096 or larger if another tool maps the file and wants page-aligned buffers.
 
 ---
 
-## Python Usage with `hk.raw`
+## `shared_ref` and `null_ref`
 
-HK provides high-level Python utilities for saving, inspecting, and running math on raw unquantized stores:
+- **`shared_ref` (`0x31`)**: a TOC entry that reuses the offsets of an earlier tensor. Tied embeddings (`token_embd` / `lm_head`) are stored once, and both names resolve to the same bytes. The Python `torch`/`numpy` savers create these by detecting identical `data_ptr`s; the writer requires the target to appear earlier in the TOC.
+- **`null_ref` (`0x30`)**: a tensor with no stored bytes (`data_offset = data_size = 0`); the reader expands it to zeros on request. The shape and name remain, so architecture checks still pass.
+
+---
+
+## Python
+
+The Python package's raw store (`hk.raw`) needs the native library built from this repo (see [Python API Reference](Python-API-Reference)):
 
 ```python
 import torch
-import hk
-from hk.raw import HKRawWeightStore, save_raw, load_raw
+from hk.raw import save_raw, load_raw, HKRawWeightStore
 
-# 1. Save unquantized weights with universal silicon alignment
 weights = {
     "layer0.gate.weight": torch.randn(2048, 4096, dtype=torch.bfloat16),
     "layer0.up.weight": torch.randn(2048, 4096, dtype=torch.bfloat16),
 }
-save_raw(weights, "model_raw.hk", universal_alignment=True)
+save_raw("model_raw.hk", weights, alignment=4096)   # filename first
 
-# 2. Open zero-copy memory-mapped store
-store = load_raw("model_raw.hk")
+tensors = load_raw("model_raw.hk")                  # dict of tensors backed by the mapping
 
-# 3. Check alignment guarantees
-print("Universal Page Aligned (4KB):", store.is_universal_page_aligned)
-print("Tensor Core Aligned (128B) :", store.is_tensor_core_aligned)
-
-# 4. Perform direct SIMD GEMV multiplication
-# Computes y = W * x directly from memory-mapped pages without prior RAM allocation
-x = torch.randn(4096, dtype=torch.float32)
-y = store.gemv("layer0.gate.weight", x)
-print("Output vector shape:", y.shape)
-
-# Close cleanly to unmap memory
-store.close()
+with HKRawWeightStore("model_raw.hk") as store:     # also exposes alignment info and gemv
+    print(store.alignment, store.is_universal_page_aligned)
+    y = store.gemv("layer0.gate.weight", torch.randn(4096))
 ```
+
+Notes:
+
+- `save_raw(filename, tensors, metadata=None, alignment=4096, split_index=0, split_count=1)`.
+- `to_amd_rocm`, `to_intel_npu`, `to_apple_metal` and `to_nvidia_tensor_core` in `hk.raw` only return a contiguous copy of the tensor. They do not align memory or talk to any device API; treat them as compatibility stubs.
+- `gemv` uses the native kernels for `bf16`/`f16`/`int8`/`f32` and a NumPy fallback otherwise.
 
 ---
 
-## Verifying Alignment via CLI
-
-You can verify any `.hk` file directly from your terminal:
+## Verifying a file
 
 ```bash
-# Verify alignment, checksums, and container integrity
 hk verify model.hk
 ```
 
-The tool checks that every tensor payload starts on a clean 128-byte boundary and confirms whether universal 4KB or 16KB alignment is active.
+Checks the magic and version, that the payload offset and each tensor offset are 128-byte aligned, and that no tensor extends past the end of the file. It does not verify content checksums (the header `checksum` field is reserved and unused).

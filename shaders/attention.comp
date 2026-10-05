@@ -1,0 +1,115 @@
+#version 450
+// softmax(q . K^T / sqrt(d)) V over the cached positions of one sequence, one workgroup per
+// (head, token).
+//
+// Each subgroup walks its own share of the positions (position p goes to subgroup p mod count):
+// the lanes of the subgroup split the head dimension, so a position's key and value rows are read
+// coalesced, the dot product is one subgroup reduction, and the softmax runs online with no
+// barrier inside the loop. The partial results of the subgroups are merged at the end.
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+
+layout(local_size_x = 256) in;
+layout(std430, binding = 0) readonly buffer Q { float q[]; };
+layout(std430, binding = 1) readonly buffer Par { uint par[]; };
+layout(std430, binding = 2) readonly buffer KC { uint kcw[]; };   // f16 pairs
+layout(std430, binding = 3) readonly buffer VC { uint vcw[]; };
+layout(std430, binding = 4) writeonly buffer O { float o[]; };
+layout(push_constant) uniform P {
+    uint n_tokens;
+    uint n_heads;
+    uint n_kv;
+    uint head_dim;
+    uint n_ctx;
+    float scale;
+} p;
+
+const float NEG = -3.0e38;
+const uint MAX_SG = 32u;
+shared float sm_m[MAX_SG];
+shared float sm_l[MAX_SG];
+shared float sm_acc[MAX_SG][256];
+
+void main() {
+    uint h = gl_WorkGroupID.x;
+    uint t = gl_WorkGroupID.y;
+    uint tid = gl_LocalInvocationID.x;
+    uint S = gl_SubgroupSize;
+    uint lane = gl_SubgroupInvocationID;
+    uint sg = gl_SubgroupID;
+    uint nsg = gl_NumSubgroups;
+    uint hd = p.head_dim;
+    uint hw = hd / 2u;
+    uint g = h / (p.n_heads / p.n_kv);
+    uint pos = par[t];
+    uint kv_slot = par[p.n_tokens + t];
+    uint npos = pos + 1u;
+    uint qd = p.n_heads * hd;
+
+    vec2 qr[16];
+    vec2 acc[16];
+    uint nw = 0u;
+    for (uint w = lane; w < hw; w += S) {
+        qr[nw] = vec2(q[t * qd + h * hd + 2u * w], q[t * qd + h * hd + 2u * w + 1u]) * p.scale;
+        acc[nw] = vec2(0.0);
+        nw++;
+    }
+
+    float m = NEG;
+    float l = 0.0;
+    // Four positions per step, so their loads are in flight together.
+    for (uint ps = sg * 4u; ps < npos; ps += nsg * 4u) {
+        vec4 parts = vec4(0.0);
+        uint base[4];
+        for (uint u = 0u; u < 4u; u++) {
+            uint pp = min(ps + u, npos - 1u);
+            base[u] = ((kv_slot * p.n_ctx + pp) * p.n_kv + g) * hw;
+        }
+        for (uint i = 0u; i < nw; i++) {
+            uint widx = lane + i * S;
+            parts.x += dot(qr[i], unpackHalf2x16(kcw[base[0] + widx]));
+            parts.y += dot(qr[i], unpackHalf2x16(kcw[base[1] + widx]));
+            parts.z += dot(qr[i], unpackHalf2x16(kcw[base[2] + widx]));
+            parts.w += dot(qr[i], unpackHalf2x16(kcw[base[3] + widx]));
+        }
+        vec4 sc = subgroupAdd(parts);
+        // Positions past the end of the sequence take no part.
+        if (ps + 1u >= npos) sc.y = NEG;
+        if (ps + 2u >= npos) sc.z = NEG;
+        if (ps + 3u >= npos) sc.w = NEG;
+        float nm = max(max(max(sc.x, sc.y), max(sc.z, sc.w)), m);
+        float corr = exp(m - nm);
+        vec4 e = exp(sc - nm);
+        for (uint i = 0u; i < nw; i++) {
+            uint widx = lane + i * S;
+            vec2 v0 = unpackHalf2x16(vcw[base[0] + widx]);
+            vec2 v1 = unpackHalf2x16(vcw[base[1] + widx]);
+            vec2 v2 = unpackHalf2x16(vcw[base[2] + widx]);
+            vec2 v3 = unpackHalf2x16(vcw[base[3] + widx]);
+            acc[i] = acc[i] * corr + e.x * v0 + e.y * v1 + e.z * v2 + e.w * v3;
+        }
+        l = l * corr + e.x + e.y + e.z + e.w;
+        m = nm;
+    }
+
+    if (lane == 0u) {
+        sm_m[sg] = m;
+        sm_l[sg] = l;
+    }
+    for (uint i = 0u; i < nw; i++) {
+        uint w = lane + i * S;
+        sm_acc[sg][2u * w] = acc[i].x;
+        sm_acc[sg][2u * w + 1u] = acc[i].y;
+    }
+    barrier();
+    float big = NEG;
+    for (uint s = 0u; s < nsg; s++) big = max(big, sm_m[s]);
+    float total = 0.0;
+    for (uint s = 0u; s < nsg; s++) total += exp(sm_m[s] - big) * sm_l[s];
+    float inv = 1.0 / total;
+    for (uint d = tid; d < hd; d += 256u) {
+        float v = 0.0;
+        for (uint s = 0u; s < nsg; s++) v += exp(sm_m[s] - big) * sm_acc[s][d];
+        o[t * qd + h * hd + d] = v * inv;
+    }
+}

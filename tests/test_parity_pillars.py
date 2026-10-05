@@ -194,6 +194,10 @@ class TestParityPillars(unittest.TestCase):
 
     def test_pillar5_editor_gui_module(self):
         """Verify HK Graphical Editor module loads cleanly."""
+        try:
+            import tkinter  # noqa: F401
+        except ImportError as e:
+            self.skipTest(f"tkinter is not available here: {e}")
         from tools.hk_editor_gui import HKEditorApp, STORAGE_TYPE_NAMES
         self.assertIn(0x42, STORAGE_TYPE_NAMES)
         self.assertEqual(STORAGE_TYPE_NAMES[0x42], "Q4_K")

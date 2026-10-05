@@ -5,11 +5,11 @@
 
     <groupId>com.hk</groupId>
     <artifactId>hk-tensor</artifactId>
-    <version>1.1.0</version>
+    <version>1.1.1</version>
     <packaging>jar</packaging>
 
     <name>HK Neural Tensor Format</name>
-    <description>Java / Android JNI bindings for HK neural tensor format and zero-copy inference.</description>
+    <description>Java / Android JNI bindings (reader and writer) for the HK neural tensor format.</description>
     <url>https://github.com/harshitkhandelwal208/hk</url>
 
     <licenses>

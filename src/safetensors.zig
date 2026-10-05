@@ -112,7 +112,7 @@ pub fn transcodeSafeTensorsToHK(
         const raw_bytes = try st_reader.getRawTensorBytes(start_off, end_off);
 
         // Extract shape
-        var shape_arr = [_]u64{0} ** format.MAX_DIMS;
+        var shape_arr = @as([format.MAX_DIMS]u64, @splat(0));
         const ndim: u8 = @min(@as(u8, @intCast(shape_val.array.items.len)), format.MAX_DIMS);
         var total_elements: usize = 1;
         for (0..ndim) |i| {

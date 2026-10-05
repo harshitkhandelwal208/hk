@@ -1,0 +1,104 @@
+#version 450
+// Per head query / key preparation and the KV cache write.
+//   queries: optional RMS norm over the head, then rotary embedding, in place
+//   keys:    the same, then stored as f16 in the cache
+//   values:  stored as f16 in the cache
+// One workgroup per (token, head slot); slots are the n_heads query heads, then the n_kv key
+// heads, then the n_kv value heads.
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+
+layout(local_size_x = 128) in;
+layout(std430, binding = 0) buffer Q { float q[]; };
+layout(std430, binding = 1) buffer K { float k[]; };
+layout(std430, binding = 2) readonly buffer V { float v[]; };
+layout(std430, binding = 3) readonly buffer Par { uint par[]; };      // [n] positions, then [n] slots
+layout(std430, binding = 4) readonly buffer InvFreq { float inv_freq[]; };
+layout(std430, binding = 5) readonly buffer QN { float qnorm[]; };
+layout(std430, binding = 6) readonly buffer KN { float knorm[]; };
+layout(std430, binding = 7) writeonly buffer KC { float16_t kc[]; };
+layout(std430, binding = 8) writeonly buffer VC { float16_t vc[]; };
+layout(push_constant) uniform P {
+    uint n_tokens;
+    uint n_heads;
+    uint n_kv;
+    uint head_dim;
+    uint half_rot;      // rotated dimension pairs
+    uint neox;          // 1: pairs (i, i + half_rot), 0: adjacent pairs
+    uint qk_norm;       // 1: RMS norm each head first
+    uint n_ctx;
+    float eps;
+    float mscale;
+} p;
+
+shared float red[128];
+shared float hv[256];
+
+void main() {
+    uint t = gl_WorkGroupID.y;
+    uint slot_head = gl_WorkGroupID.x;
+    uint tid = gl_LocalInvocationID.x;
+    uint hd = p.head_dim;
+    uint pos = par[t];
+    uint kv_slot = par[p.n_tokens + t];
+
+    uint kind;      // 0 query, 1 key, 2 value
+    uint head;
+    if (slot_head < p.n_heads) { kind = 0u; head = slot_head; }
+    else if (slot_head < p.n_heads + p.n_kv) { kind = 1u; head = slot_head - p.n_heads; }
+    else { kind = 2u; head = slot_head - p.n_heads - p.n_kv; }
+
+    uint qd = p.n_heads * hd;
+    uint kd = p.n_kv * hd;
+    // Load the head.
+    for (uint i = tid; i < hd; i += 128u) {
+        float val;
+        if (kind == 0u) val = q[t * qd + head * hd + i];
+        else if (kind == 1u) val = k[t * kd + head * hd + i];
+        else val = v[t * kd + head * hd + i];
+        hv[i] = val;
+    }
+    barrier();
+
+    if (kind != 2u) {
+        if (p.qk_norm != 0u) {
+            float s = 0.0;
+            for (uint i = tid; i < hd; i += 128u) s += hv[i] * hv[i];
+            red[tid] = s;
+            barrier();
+            for (uint r = 64u; r > 0u; r >>= 1) {
+                if (tid < r) red[tid] += red[tid + r];
+                barrier();
+            }
+            float inv = 1.0 / sqrt(red[0] / float(hd) + p.eps);
+            barrier();
+            for (uint i = tid; i < hd; i += 128u) {
+                hv[i] = hv[i] * inv * (kind == 0u ? qnorm[i] : knorm[i]);
+            }
+            barrier();
+        }
+        // Rotate in place: each thread owns one pair.
+        for (uint i = tid; i < p.half_rot; i += 128u) {
+            float a = float(pos) * inv_freq[i];
+            float c = cos(a) * p.mscale;
+            float sn = sin(a) * p.mscale;
+            uint ia = p.neox != 0u ? i : 2u * i;
+            uint ib = p.neox != 0u ? i + p.half_rot : 2u * i + 1u;
+            float x0 = hv[ia];
+            float x1 = hv[ib];
+            hv[ia] = x0 * c - x1 * sn;
+            hv[ib] = x0 * sn + x1 * c;
+        }
+        barrier();
+    }
+
+    if (kind == 0u) {
+        for (uint i = tid; i < hd; i += 128u) q[t * qd + head * hd + i] = hv[i];
+    } else {
+        uint base = ((kv_slot * p.n_ctx + pos) * p.n_kv + head) * hd;
+        for (uint i = tid; i < hd; i += 128u) {
+            if (kind == 1u) kc[base + i] = float16_t(hv[i]);
+            else vc[base + i] = float16_t(hv[i]);
+        }
+    }
+}

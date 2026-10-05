@@ -1,0 +1,29 @@
+#version 450
+// out[t] = in[t] * weight / rms(in[t]); one workgroup per token.
+layout(local_size_x = 256) in;
+layout(std430, binding = 0) readonly buffer In { float xin[]; };
+layout(std430, binding = 1) readonly buffer Wt { float wt[]; };
+layout(std430, binding = 2) writeonly buffer Out { float xout[]; };
+layout(push_constant) uniform P { uint dim; float eps; } p;
+
+shared float red[256];
+
+void main() {
+    uint t = gl_WorkGroupID.x;
+    uint tid = gl_LocalInvocationID.x;
+    float s = 0.0;
+    for (uint i = tid; i < p.dim; i += 256u) {
+        float v = xin[t * p.dim + i];
+        s += v * v;
+    }
+    red[tid] = s;
+    barrier();
+    for (uint k = 128u; k > 0u; k >>= 1) {
+        if (tid < k) red[tid] += red[tid + k];
+        barrier();
+    }
+    float inv = 1.0 / sqrt(red[0] / float(p.dim) + p.eps);
+    for (uint i = tid; i < p.dim; i += 256u) {
+        xout[t * p.dim + i] = xin[t * p.dim + i] * inv * wt[i];
+    }
+}

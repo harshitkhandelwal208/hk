@@ -30,12 +30,23 @@ enum class StorageType : uint8_t {
     INT64 = HK_STORAGE_INT64,
     UINT8 = HK_STORAGE_UINT8,
     BOOL = HK_STORAGE_BOOL,
+    INT16 = HK_STORAGE_INT16,
+    UINT16 = HK_STORAGE_UINT16,
+    UINT32 = HK_STORAGE_UINT32,
+    UINT64 = HK_STORAGE_UINT64,
+    F64 = HK_STORAGE_F64,
     DQ4 = HK_STORAGE_DQ4,
     NF4 = HK_STORAGE_DQ4,
     DQ8 = HK_STORAGE_DQ8,
     DQ6 = HK_STORAGE_DQ6,
     DQ12 = HK_STORAGE_DQ12,
     DQT = HK_STORAGE_DQT,
+    Q4_0 = HK_STORAGE_Q4_0,
+    Q8_0 = HK_STORAGE_Q8_0,
+    Q4_1 = HK_STORAGE_Q4_1,
+    Q5_0 = HK_STORAGE_Q5_0,
+    Q5_1 = HK_STORAGE_Q5_1,
+    Q8_1 = HK_STORAGE_Q8_1,
     SparseF16 = HK_STORAGE_SPARSE_F16,
     SparseDQ8 = HK_STORAGE_SPARSE_DQ8,
     Sparse24 = HK_STORAGE_SPARSE_2_4,
@@ -56,6 +67,8 @@ enum class StorageType : uint8_t {
     IQ3_XXS = HK_STORAGE_IQ3_XXS,
     IQ4_NL = HK_STORAGE_IQ4_NL,
     IQ4_XS = HK_STORAGE_IQ4_XS,
+    IQ2_S = HK_STORAGE_IQ2_S,
+    IQ3_S = HK_STORAGE_IQ3_S,
     TQ1_0 = HK_STORAGE_TQ1_0,
     TQ2_0 = HK_STORAGE_TQ2_0,
     MXFP4 = HK_STORAGE_MXFP4,
@@ -311,6 +324,11 @@ public:
         if (hk_writer_add_metadata_string(m_writer, key.c_str(), val.c_str()) != 0) {
             throw std::runtime_error("Failed to add string metadata: " + key);
         }
+    }
+
+    // Without this, a string literal would pick the bool overload.
+    void add_metadata(const std::string& key, const char* val) {
+        add_metadata(key, std::string(val));
     }
 
     void add_metadata(const std::string& key, int64_t val) {

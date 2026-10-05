@@ -1,204 +1,87 @@
-# Training and Fine-Tuning with HKTrainer
+# Training and Fine-Tuning (`HKTrainer`)
 
-In this guide, I cover all training and adaptation procedures supported in HK: Full Fine-Tuning (FFT), Parameter-Efficient Fine-Tuning (QLoRA), Supervised Fine-Tuning (SFT), Continued Pre-Training (CPT), and Pre-Training from scratch.
-
----
-
-## Supported Training Procedures
-
-I designed `HKTrainer` to be fully compatible with whatever training procedure your project requires:
-
-```
-+--------------------------------------------------------------------------------+
-|                           HK TRAINING CAPABILITIES                             |
-+--------------------------------------------------------------------------------+
-| 1. Full Fine-Tuning (FFT)       | Updates 100% of model parameters             |
-| 2. Parameter-Efficient (QLoRA)  | Native low-rank adapters, zero extra packages|
-| 3. Supervised Fine-Tuning (SFT) | Instruction datasets, chat template masking  |
-| 4. Continued Pre-Training (CPT) | Domain adaptation with vocab expansion       |
-| 5. Pre-Training from Scratch    | Distributed raw sharding, 4KB/16KB page DMA  |
-| 6. Adaptive Growth Training     | Plateau-triggered Net2Net SwiGLU widening    |
-+--------------------------------------------------------------------------------+
-```
+> **Status: experimental, Python/PyTorch only.** Training lives in `python/hk/trainer.py` and `python/hk/modeling.py`. It is **not** part of the Zig engine, which is inference-only. Two things to know before you start:
+>
+> 1. `HKForCausalLM` is **HK's own small transformer** (learned token embedding, multi-head attention without grouped-query or RoPE, `LayerNorm`, a GELU two-layer MLP `mlp_fc1`/`mlp_fc2`). It is *not* a loader for Llama, Qwen, Mistral or other Hugging Face architectures, and it does not read GGUF files. You can pretrain or fine-tune models of this architecture; you cannot point it at an arbitrary downloaded LLM. (`from_pretrained` reads `.hk` or `.safetensors` files whose tensor names match this architecture.)
+> 2. The models this produces are **not** loadable by the `hk run` inference engine unless you export weights with matching names for a supported architecture. They are for experiments and research on the Python side.
+>
+> The trainer's test coverage is a small-model smoke test (`tests/` Python suites). No convergence, speed or memory results are claimed on this page.
 
 ---
 
-## 1. Full Fine-Tuning (FFT)
+## What `HKTrainer` does
 
-In Full Fine-Tuning, every single parameter across every layer (self-attention projections, SwiGLU MLPs, RMSNorm weights, and embeddings) receives gradient updates.
+A plain PyTorch training loop (AdamW, linear warmup, gradient accumulation, grad clipping) with optional extras:
 
-### How I Implemented FFT in HK
-- Set `use_qlora=False` in `HKTrainingArguments`.
-- Base weights are memory-mapped directly from the `.hk` file with copy-on-write page safety.
-- The AdamW optimizer tracks first and second moment states.
-- When checkpoints are saved, HK writes delta updates and metrics directly into the file's Appendix DAG, eliminating the need to duplicate 10 separate full model copies on disk.
+| Feature | Flag | What it does |
+| :--- | :--- | :--- |
+| Full fine-tuning | `use_qlora=False` | All parameters train. |
+| QLoRA-style adapters | `use_qlora=True`, `lora_rank`, `lora_alpha` | `enable_qlora` freezes the model, replaces linear layers with `HKQuantizedLinear` (base weights quantized to Q4_0 by default) and attaches trainable LoRA A/B matrices. Only the adapters get gradients. |
+| Plasticity isolation | `protect_base_capacity=True` | Gradient hooks zero the updates to pre-expansion neurons and vocabulary rows (see [Dynamic Architecture Growth](Dynamic-Architecture-Growth)). |
+| Plateau growth | `enable_adaptive_growth`, `growth_patience`, `growth_width_factor` | When loss does not improve by >1e-4 for `growth_patience` checks, widens every MLP by `growth_width_factor` (`model.grow_width`, new units seeded with 1e-5 noise) and migrates AdamW moment estimates to the new shapes. Function preservation holds up to that small noise. Without an `eval_dataset` the training loss is the plateau signal. |
+| Self-play / sandbox flags | `enable_self_play`, `enable_sandbox_eval` | Currently **only construct** a `SPINLoss` / `CodeSandbox` object on the trainer (`trainer.spin_loss_fn`, `trainer.sandbox`). The built-in training loop does not call them; they are there for custom loops. `spin_lambda` is not read. See [Autonomous Self-Training](Autonomous-Self-Training). |
+| Async evaluation | (with `eval_dataset`) | Validation runs on a background thread over a snapshot of the weights. |
 
 ```python
-import torch
 from hk import HKConfig, HKForCausalLM
 from hk.trainer import HKTrainer, HKTrainingArguments
 
-# Load model
-config = HKConfig.from_pretrained("model.hk")
-model = HKForCausalLM.from_pretrained("model.hk", config=config)
+config = HKConfig(vocab_size=8192, hidden_size=256, num_hidden_layers=4,
+                  num_attention_heads=4, intermediate_size=1024)
+model = HKForCausalLM(config)
 
-# Configure Full Fine-Tuning (FFT)
-args = HKTrainingArguments(
-    output_dir="./checkpoints_fft",
-    learning_rate=5e-5,
-    batch_size=2,
-    gradient_accumulation_steps=4,
-    num_train_epochs=3,
-    weight_decay=0.01,
-    warmup_steps=50,
-    
-    # FFT mode: 100% parameter updates
-    use_qlora=False,
-    
-    # Optional: Enable plateau growth to widen layers if FFT plateaus
-    enable_adaptive_growth=True,
-    growth_patience=3,
-    growth_width_factor=1.20,
-)
-
-trainer = HKTrainer(
-    model=model,
-    args=args,
-    train_dataset=train_dataset,
-    eval_dataset=eval_dataset,
-)
-trainer.train()
-
-model.save_pretrained("./checkpoints_fft/final_model.hk")
+args = HKTrainingArguments(output_dir="./out", learning_rate=5e-4, batch_size=4,
+                           num_train_epochs=3, use_qlora=False)
+trainer = HKTrainer(model=model, args=args, train_dataset=train_ds, eval_dataset=eval_ds)
+result = trainer.train()        # returns global_step, final_loss, eval_metrics, generation, output_path
 ```
 
----
-
-## 2. Parameter-Efficient Fine-Tuning (Native QLoRA)
-
-If you have limited VRAM (for example, on a laptop with a 4GB or 6GB GPU), training all parameters with FFT can exceed hardware limits.
-
-I built native QLoRA directly into the engine without needing third-party libraries (`peft`, `bitsandbytes`, or custom CUDA builds):
-
-```python
-args = HKTrainingArguments(
-    output_dir="./checkpoints_qlora",
-    learning_rate=2e-4,
-    batch_size=4,
-    num_train_epochs=3,
-    
-    # Native QLoRA
-    use_qlora=True,
-    lora_rank=8,
-    lora_alpha=16.0,
-    
-    # Protect base capacity
-    protect_base_capacity=True,
-)
-```
-
-How it works:
-1. Base weights remain frozen in memory.
-2. Low-rank adapter matrices ($A$ and $B$) are attached to attention and MLP projection layers.
-3. Only the low-rank adapters receive gradients, cutting training memory by over 70%.
-4. Trained adapters are persisted into the container's Appendix region.
+Datasets yield `(input_ids, labels)`, a dict with `input_ids` (and optionally `labels`), or bare `input_ids`. Loss comes from the model's `labels=` argument. For instruction tuning, mask the prompt tokens in `labels` with `-100` yourself; the trainer does no chat templating or masking. If you pass no dataset, the trainer trains on one random dummy batch (a smoke-test mode, not useful training).
 
 ---
 
-## 3. Supervised Fine-Tuning (SFT) & Instruction Tuning
+## Checkpoints and the appendix
 
-For instruction datasets (Alpaca, ShareGPT, or custom Q&A pairs), SFT trains the model to follow user prompts:
+`save_model` calls `model.save_pretrained(path, alignment=...)` and then appends one `lora_adapter` record to the file's appendix (see [In-Container Version Lineage](In-Container-Version-Lineage)) containing:
 
-- Format your dataset using the model's embedded Jinja2 chat template (`tokenizer.apply_chat_template`).
-- Use prompt loss masking: set the labels for user instruction tokens to `-100` so that cross-entropy loss is computed exclusively on the assistant response tokens.
+- **the `torch.save` bytes of every parameter with `requires_grad`**, plus loss/accuracy/pass-rate metrics;
+- or the marker `HK_BASE_WEIGHTS_SAVED` if nothing is trainable.
 
-```python
-class SFTDataset(torch.utils.data.Dataset):
-    def __init__(self, samples, tokenizer, max_len=512):
-        self.examples = []
-        for s in samples:
-            prompt_text = f"<user>\n{s['instruction']}\n<assistant>\n"
-            full_text = prompt_text + s["response"]
-            
-            prompt_ids = tokenizer.encode(prompt_text)
-            full_ids = tokenizer.encode(full_text)
-            
-            input_ids = full_ids[:max_len]
-            labels = list(input_ids)
-            # Mask instruction tokens from loss
-            for i in range(min(len(prompt_ids), len(labels))):
-                labels[i] = -100
-                
-            self.examples.append({
-                "input_ids": torch.tensor(input_ids, dtype=torch.long),
-                "labels": torch.tensor(labels, dtype=torch.long),
-            })
+Consequences you should know:
 
-    def __len__(self):
-        return len(self.examples)
-
-    def __getitem__(self, idx):
-        return self.examples[idx]
-```
+- With QLoRA the trainable set is just the adapters, so records are small.
+- With **full fine-tuning every parameter is trainable**, so each appendix record is a complete copy of the model's weights. FFT checkpoints are therefore not smaller than ordinary checkpoints; there is no delta compression.
+- The appendix write is wrapped in a broad `try/except` that ignores failures, so a failed append does not stop training and does not warn. Verify with `hk appendix <file>` when it matters.
+- Appended adapters are not merged or applied on load; reading them back is up to your code.
 
 ---
 
-## 4. Continued Pre-Training (CPT) & Domain Adaptation
+## Pretraining and sharding
 
-When adapting a generalist model to a new programming language (e.g. Zig or Rust) or technical domain (e.g. legal or clinical):
-
-1. Dynamic Vocabulary Expansion:
-   If the domain contains specialized syntax or terms, expand the vocabulary first so tokens are not split into tiny byte fragments:
-   ```python
-   from hk.adaptive.growth import expand_vocab
-   expand_vocab(model.model.embed_tokens, model.lm_head, new_vocab_size=32500)
-   ```
-2. Plasticity Isolation:
-   Enable `protect_base_capacity=True`. HK generates gradient masks that dampen updates to pre-existing base neurons while allowing newly added neurons to learn domain patterns rapidly.
-3. Training:
-   Run causal language modeling on raw domain text files with a low learning rate and cosine decay.
+Define a model through `HKConfig`, train with `HKTrainer`, and save with `save_pretrained`. For large checkpoints `hk.torch.save_sharded_file` / `hk.raw.save_sharded_raw` produce shard files (see [Storage and Sparsity](Storage-and-Sparsity)). Multi-GPU data/tensor parallelism is not implemented in the trainer; use PyTorch's own tooling around it if you need that.
 
 ---
 
-## 5. Pre-Training from Scratch
-
-If you are training a new architecture from scratch:
-- Define dimensions using `HKConfig`.
-- Use `save_sharded_raw` to partition checkpoints into multi-file shards (`model.hk.index.json`) for multi-GPU data parallel or tensor parallel setups.
-- Benefit from universal 4KB / 16KB page alignment: storage engines stream directly into host RAM and PCIe DMA channels without format conversions.
-
----
-
-## 6. Plateau-Triggered Dynamic Growth
-
-When training on complex datasets, models frequently hit a convergence plateau where validation loss stops dropping.
-
-With `enable_adaptive_growth=True`:
-1. `HKTrainer` monitors validation loss across evaluation intervals.
-2. If loss does not improve for `growth_patience` evaluations, the loop automatically pauses.
-3. The native Zig `GrowthGovernor` checks available physical RAM/VRAM.
-4. Net2WiderNet widens intermediate SwiGLU layers by `growth_width_factor` with exact **0.000000** Day-0 output preservation.
-5. Training resumes immediately, allowing the model to break through the plateau.
-
----
-
-## Training Arguments Reference (`HKTrainingArguments`)
+## Arguments (`HKTrainingArguments`)
 
 | Argument | Default | Description |
 | :--- | :--- | :--- |
-| `output_dir` | `"./results"` | Directory where checkpoints and exports are written. |
-| `learning_rate` | `3e-4` | Peak learning rate for AdamW optimizer. |
-| `batch_size` | `4` | Training batch size per device. |
-| `num_train_epochs` | `3` | Total number of training epochs. |
-| `gradient_accumulation_steps` | `1` | Number of update steps to accumulate before backward pass. |
-| `warmup_steps` | `0` | Linear warmup steps for learning rate schedule. |
-| `weight_decay` | `0.01` | Weight decay rate for AdamW optimizer. |
-| `max_grad_norm` | `1.0` | Maximum gradient norm for gradient clipping. |
-| `use_qlora` | `False` | Enable native low-rank adapter fine-tuning. If `False`, Full Fine-Tuning (FFT) is performed. |
-| `lora_rank` | `8` | Rank dimension for LoRA adapter matrices. |
-| `lora_alpha` | `16.0` | Scaling factor for LoRA updates. |
-| `enable_adaptive_growth` | `False` | Automatically widen model when validation loss plateaus. |
-| `growth_patience` | `5` | Number of evaluations with stagnant loss before triggering growth. |
-| `growth_width_factor` | `1.25` | Multiplier for widening feed-forward dimensions. |
-| `protect_base_capacity` | `True` | Apply gradient masks to prevent catastrophic forgetting. |
-| `alignment` | `128` | Memory alignment boundary for saved checkpoints (128, 4096, 16384). |
+| `output_dir` | `"./output"` | Where checkpoints (`checkpoint-<step>.hk`, final `model.hk`) are written. |
+| `learning_rate` | `5e-4` | Peak AdamW learning rate. |
+| `batch_size` | `4` | Per-step batch size. |
+| `num_train_epochs` | `3` | Epochs. |
+| `warmup_steps` | `10` | Linear warmup steps (constant LR afterwards; no decay schedule). |
+| `weight_decay` | `0.01` | AdamW weight decay. |
+| `logging_steps` | `5` | Interval for averaging loss and dispatching async eval. |
+| `save_steps` | `50` | Checkpoint interval in optimizer steps (`0` disables). |
+| `gradient_accumulation_steps` | `1` | Micro-batches per optimizer step. |
+| `max_grad_norm` | `1.0` | Gradient clipping (`0` disables). |
+| `enable_adaptive_growth` | `False` | Plateau-triggered MLP widening. |
+| `growth_patience` | `5` | Stagnant checks before growing. |
+| `growth_width_factor` | `1.25` | Intermediate-size multiplier (rounded up to a multiple of 4). |
+| `protect_base_capacity` | `False` | Gradient masks on pre-expansion capacity. |
+| `use_qlora` | `False` | Quantize base weights and train low-rank adapters only. |
+| `lora_rank` / `lora_alpha` | `8` / `16.0` | LoRA hyperparameters. |
+| `enable_self_play` / `spin_lambda` | `False` / `0.1` | Creates `trainer.spin_loss_fn` (fixed beta 0.1); not used by `train()`. `spin_lambda` is unused. |
+| `enable_sandbox_eval` / `sandbox_timeout_ms` | `False` / `2000` | Creates `trainer.sandbox` (a `CodeSandbox`); not used by `train()`. |
+| `alignment` | `128` | Payload alignment of saved checkpoints (see [Raw Storage](Raw-Storage-and-Super-Coalescing)). |

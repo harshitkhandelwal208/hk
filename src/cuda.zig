@@ -320,9 +320,9 @@ pub const CudaCachingAllocator = struct {
     };
 
     var mutex: Mutex = .{};
-    var small_blocks: [128]?Block = [_]?Block{null} ** 128;
+    var small_blocks: [128]?Block = @as([128]?Block, @splat(null));
     var small_count: usize = 0;
-    var large_blocks: [64]?Block = [_]?Block{null} ** 64;
+    var large_blocks: [64]?Block = @as([64]?Block, @splat(null));
     var large_count: usize = 0;
 
     pub const SMALL_THRESHOLD: usize = 1024 * 1024; // 1 MB

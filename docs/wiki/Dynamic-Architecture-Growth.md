@@ -1,142 +1,69 @@
 # Dynamic Architecture Growth (Net2Net)
 
-In this guide, I explain how I designed HK to enable dynamic model expansion, allowing you to widen layers, add depth, and grow vocabulary on the fly while mathematically preserving existing model outputs.
+> **Status:** growth is an offline/training-time feature. It exists in two independent implementations: PyTorch routines in `python/hk/adaptive/growth.py` (for `nn.Module` models) and native Zig routines in `src/growth.zig` driving `hk expand` (for `.hk` files). The inference engine runs the resulting model like any other; it has no growth logic. "Function preserving" below is a property of the construction, checked in the repo's tests on small models, not a promise about task quality after you continue training.
 
 ---
 
-## The Problem with Static Models
+## What is guaranteed, and what is not
 
-In traditional deep learning, once a model finishes pre-training, its architecture is frozen forever:
-- If your 1B model struggles to understand code or medical texts, you cannot simply add 200 million parameters to its intermediate layers.
-- If you need to add syntax tokens for a new programming language, modifying the embedding table corrupts vocabulary offsets.
-- If you attempt to train new layers naively, the new parameters start with random values, breaking the model's activations and causing catastrophic forgetting.
-- If you try to guess how much bigger you can make a model on your hardware, you often face frustrating out-of-memory (OOM) crashes after hours of setup.
+Net2Net-style widening copies the original weights and adds new units arranged so that the new units contribute nothing initially:
 
-I solved this in HK with function-preserving dynamic growth routines combined with a native hardware resource governor.
+- **Wider MLP (SwiGLU)**: `src/growth.zig` (`net2WiderSwiGLU`) has two modes. *Zero-init*: existing rows are copied, new `gate`/`up` rows are added, and the matching new `down_proj` columns are **zero**, so the extra units contribute nothing. *Classic Net2Net*: new units replicate randomly chosen existing units and the outgoing `down_proj` weights of each replicated unit are divided by its replication count, so the sum is unchanged. With zero noise both give the original outputs up to floating-point rounding. `hk expand --width` uses the zero-init construction.
+- **Deeper**: `net2deeper_linear` / `ModularResidualBlock` insert a block whose residual branch starts at zero, so the stack is initially an identity on the added layer.
+- **Larger vocabulary**: existing token rows are copied unchanged; new rows get small random values. Logits for the existing tokens are unchanged, but new logits now take part in the softmax, so output *probabilities* shift slightly unless the new rows are initialized to produce very low logits.
+
+What this does not promise: that the grown model trains well, that new capacity gets used, or that it fits your hardware. Training behavior is yours to evaluate.
 
 ---
 
-## 1. Function-Preserving Net2WiderNet (SwiGLU & Linear)
+## Python API (`hk.adaptive.growth`)
 
-Net2WiderNet allows you to widen the intermediate dimension of feed-forward networks (such as SwiGLU MLPs in Llama, Qwen, and Mistral) or attention projection matrices during training or fine-tuning.
-
-### The Mathematical Guarantee
-When widening a layer from dimension $D_{\text{old}}$ to $D_{\text{new}}$ in HK, the routine copies the original weights into the upper-left partition and initializes the newly added neurons such that the initial output is mathematically identical to the unexpanded model:
-
-$$f_{\text{new}}(x) \equiv f_{\text{old}}(x)$$
-
-On Day 0 (the moment of expansion), the output deviation is exactly **0.000000**. The model produces the exact same logits and predictions as it did before widening. It then has extra capacity to absorb new training data without forgetting its base knowledge.
-
-### Expanding a SwiGLU MLP in Python
 ```python
-import torch
-from hk.adaptive.growth import net2wider_swiglu
+from hk.adaptive.growth import (
+    net2wider_swiglu, net2wider_linear, net2deeper_linear, ModularResidualBlock,
+    expand_vocab, expand_model_width, protect_base_capacity, GrowthGovernor,
+)
 
-# Assume layer has gate_proj (hidden -> intermediate), up_proj, down_proj
 mlp = model.model.layers[0].mlp
-
-# Current intermediate size: 1536
-# Target intermediate size: 2048
-wider_gate, wider_up, wider_down = net2wider_swiglu(
-    gate_proj=mlp.gate_proj,
-    up_proj=mlp.up_proj,
-    down_proj=mlp.down_proj,
-    new_intermediate_size=2048,
-    noise_std=0.0,  # 0.0 guarantees exact mathematical function preservation
+mlp.gate_proj, mlp.up_proj, mlp.down_proj = net2wider_swiglu(
+    mlp.gate_proj, mlp.up_proj, mlp.down_proj,
+    new_intermediate_size=2048, noise_std=0.0,
 )
 
-# Assign widened weights back to model
-mlp.gate_proj = wider_gate
-mlp.up_proj = wider_up
-mlp.down_proj = wider_down
-
-print("SwiGLU MLP successfully expanded to 2048 intermediate units.")
+# Whole-model helpers take an nn.Module with `layers` / `embed_tokens` / `lm_head` attributes
+model = expand_model_width(model, expansion_ratio=1.33)
+model = expand_vocab(model, new_vocab_size=32500, init_std=0.02)
 ```
 
----
+Notes:
 
-## 2. Function-Preserving Net2DeeperNet
+- `expand_vocab` and `expand_model_width` take the **model** and look up `embed_tokens`, `lm_head` and `layers` (directly or under `.model`); they raise `AttributeError` for other layouts.
+- When the native library is built, the wider-SwiGLU math is done by it (`native_net2wider_swiglu`); otherwise PyTorch code is used.
+- These work on PyTorch modules, not on the engine's `.hk` runtime. To run a grown model with the engine, save it to `.hk` and make sure its tensor names and metadata match a supported architecture (see [Compatibility](Compatibility)).
 
-Net2DeeperNet increases the depth of a neural network by inserting new layers.
+### Plasticity isolation
 
-To prevent destroying the model's forward pass, HK inserts **Modular Residual Blocks** (`ModularResidualBlock`). These blocks are initialized as identity operations:
+`protect_base_capacity(model, old_intermediate_sizes, old_vocab_size)` registers gradient hooks that zero gradients for the original neurons and vocabulary rows, so training only updates the new capacity. This stops the *original parameters* moving, which limits forgetting of what they computed; it does not prevent the new units from changing the model's behavior, so forgetting is reduced, not eliminated.
 
-$$x_{\text{out}} = x + 0 \cdot g(x) = x$$
-
-Because the transformation initially evaluates to an identity pass, inserting three or four new adapter blocks into an existing transformer stack does not alter the model's predictions. As training begins, the new blocks gradually learn specialized residual representations.
-
----
-
-## 3. Dynamic Vocabulary Expansion
-
-When teaching a model a new domain (such as legal texts or a new programming language like Zig), existing tokenizers often split domain keywords into 4 or 5 fragmented byte tokens. This bloats context windows and degrades comprehension.
-
-HK allows you to expand the vocabulary dynamically:
+### `GrowthGovernor`
 
 ```python
-from hk.adaptive.growth import expand_vocab
-
-# Expand token embedding matrix from 32,000 to 32,500 tokens
-new_embed, new_head = expand_vocab(
-    embed_tokens=model.model.embed_tokens,
-    lm_head=model.lm_head,
-    new_vocab_size=32500,
-    init_std=0.02,
-)
-
-model.model.embed_tokens = new_embed
-model.lm_head = new_head
+gov = GrowthGovernor(max_vram_mb=6144, max_growth_ratio=1.5)
+ok, reason = gov.can_grow(current_params=135_000_000, additional_params=25_000_000, dtype_bytes=2)
 ```
 
-Pre-existing token weights and IDs are preserved with bit-exact precision. Newly introduced token embeddings are initialized with Gaussian noise centered on existing embedding statistics, ready to learn new domain tokens.
+A simple budget check: rejects if `(current + additional) / current > max_growth_ratio`, or if the added parameters' bytes exceed `max_vram_mb`. If `max_vram_mb` is omitted it uses 80% of free CUDA memory when PyTorch reports CUDA, else a fixed 4096 MB. It estimates only the *added* parameter bytes; it does not model optimizer state, activations or fragmentation, so treat approval as a coarse filter. It runs in the native library when available and in Python otherwise; the decision is a handful of arithmetic operations, and no speed claim is made.
 
 ---
 
-## 4. Hardware Safety: Native Zig `GrowthGovernor`
-
-A major hazard of dynamic expansion is running out of physical RAM or VRAM midway through a run.
-
-I prevented this in HK with the **GrowthGovernor**, which I implemented in compiled native Zig (`hk_governor_can_grow_batch`). The governor evaluates capacity expansion constraints against physical system RAM, GPU VRAM, and maximum growth ratios in microseconds.
-
-In benchmarks, the native governor evaluates **50,000 capacity constraints in 3.57 milliseconds** (around 71 nanoseconds per decision).
-
-```python
-from hk.adaptive.growth import GrowthGovernor
-
-# Set physical memory boundary (e.g. 6 GB VRAM on a laptop GPU)
-governor = GrowthGovernor(max_vram_mb=6144, max_growth_ratio=1.5)
-
-current_params = 135_000_000
-additional_params = 25_000_000
-
-# Check if expansion fits within physical memory
-allowed, reason = governor.can_grow(current_params, additional_params, dtype_bytes=2)
-if allowed:
-    print("Expansion approved by GrowthGovernor. Safe to proceed.")
-else:
-    print(f"Expansion rejected: {reason}")
-```
-
----
-
-## 5. Plasticity Isolation (Anti-Catastrophic Forgetting)
-
-When training an expanded model, you do not want the new gradient updates to overwrite the pre-existing representations that the model spent millions of steps learning.
-
-I built in **Plasticity Isolation** to prevent this:
-- It generates a gradient mask that freezes or dampens updates to original neuron indices (`protect_base_capacity = True`).
-- Gradient updates flow predominantly or exclusively into newly added rows and columns.
-- The model learns new capabilities while the original capabilities remain shielded.
-
----
-
-## 6. Expanding via the CLI
-
-You can also widen an existing `.hk` model directly from your command line without writing any Python:
+## CLI: `hk expand`
 
 ```bash
-# Widen feed-forward layers by 33% and expand vocabulary to 32,000
-hk expand input_model.hk output_model.hk --width 1.33 --vocab 32000
+hk expand in.hk out.hk --width 1.33 --vocab 32000
 ```
 
-The output file is a valid `.hk` container with updated dimensions and aligned weights, ready for training or immediate inference.
+- Works on f32, f16 and bf16 `.hk` files; any other storage type is refused with an error. Tensors are decoded to f32 and the output is written as **f32** (so the file grows when the input was f16/bf16).
+- `--vocab N` grows tensors whose name contains `embed_tokens`, `lm_head`, `wte` or `token_embeddings` and whose first dimension is smaller than `N`.
+- `--width R` (R > 1) scales the intermediate size of tensors named `gate_proj`/`w1`, `up_proj`/`w3` (new rows: Gaussian noise, std 0.02) and `down_proj`/`w2` (new columns: zero).
+- It matches Hugging Face-style tensor names. A model converted from GGUF uses GGUF names (`blk.N.ffn_gate.weight`, ...), so nothing matches and the tool prints a warning that the output is just a copy. Hyperparameters in the metadata (hidden/intermediate size, vocabulary) are **not** updated; only `expanded_vocab_size` / `expanded_width_ratio` markers are added, so a grown file is meant as input to your training code rather than as a drop-in for the engine.
+- Fixed random seed (42), so results are reproducible.

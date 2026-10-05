@@ -10,8 +10,8 @@ const tiling = @import("tiling.zig");
 const tensor_ops_mod = @import("tensor_ops.zig");
 const growth_mod = @import("growth.zig");
 const tokenizer_mod = @import("tokenizer.zig");
-const inference_mod = @import("inference.zig");
-const sampling_mod = @import("sampling.zig");
+const engine_mod = @import("engine.zig");
+const sampler_mod = @import("sampler.zig");
 const safetensors_mod = @import("safetensors.zig");
 const hf_mapper_mod = @import("hf_mapper.zig");
 const context_mod = @import("context.zig");
@@ -24,6 +24,10 @@ pub const hk_reader_t = opaque {};
 const ReaderWrapper = struct {
     reader: reader_mod.HKReader,
     appendix_reader: ?appendix_mod.AppendixReader = null,
+    /// NUL terminated copies of every appendix record's name and target (name at 2i, target at
+    /// 2i + 1). The records in the file are length prefixed, so the C side cannot read them as
+    /// C strings directly.
+    appendix_cstrs: std.ArrayList([:0]u8) = .empty,
     allocator: std.mem.Allocator,
 };
 
@@ -37,7 +41,23 @@ pub export fn hk_open(path_c: [*:0]const u8) ?*hk_reader_t {
         allocator.destroy(wrapper);
         return null;
     };
+    wrapper.appendix_cstrs = .empty;
     wrapper.appendix_reader = appendix_mod.AppendixReader.init(allocator, wrapper.reader.mmap_region.bytes) catch null;
+    if (wrapper.appendix_reader) |ar| {
+        for (ar.records.items) |rec| {
+            for ([_][]const u8{ rec.name, rec.target }) |text| {
+                const copy = allocator.dupeSentinel(u8, text, 0) catch {
+                    hk_close(@ptrCast(wrapper));
+                    return null;
+                };
+                wrapper.appendix_cstrs.append(allocator, copy) catch {
+                    allocator.free(copy);
+                    hk_close(@ptrCast(wrapper));
+                    return null;
+                };
+            }
+        }
+    }
 
     return @ptrCast(wrapper);
 }
@@ -48,6 +68,8 @@ pub export fn hk_close(reader_ptr: ?*hk_reader_t) void {
     if (wrapper.appendix_reader) |*ar| {
         ar.deinit();
     }
+    for (wrapper.appendix_cstrs.items) |c| wrapper.allocator.free(c);
+    wrapper.appendix_cstrs.deinit(wrapper.allocator);
     wrapper.reader.deinit();
     wrapper.allocator.destroy(wrapper);
 }
@@ -762,8 +784,8 @@ pub export fn hk_appendix_get_entry(reader_ptr: ?*const hk_reader_t, index: u64,
         .metric_acc = rec.metrics.accuracy,
         .metric_pass = rec.metrics.pass_rate,
         .metric_custom = rec.metrics.custom,
-        .name = @ptrCast(rec.name.ptr),
-        .target = if (rec.target.len > 0) @ptrCast(rec.target.ptr) else "",
+        .name = wrapper.appendix_cstrs.items[index * 2].ptr,
+        .target = wrapper.appendix_cstrs.items[index * 2 + 1].ptr,
         .data = if (rec.data.len > 0) @ptrCast(rec.data.ptr) else null,
         .data_size = rec.data.len,
     };
@@ -790,7 +812,7 @@ pub export fn hk_appendix_append(
     const target = std.mem.sliceTo(target_c, 0);
     const allocator = std.heap.page_allocator;
 
-    var ph: [32]u8 = [_]u8{0} ** 32;
+    var ph: [32]u8 = @as([32]u8, @splat(0));
     if (parent_hash_ptr != null) {
         @memcpy(&ph, parent_hash_ptr.?[0..32]);
     }
@@ -1163,25 +1185,25 @@ pub export fn hk_writer_add_metadata_json(writer_ptr: ?*hk_writer_t, key_c: [*:0
     return 0;
 }
 
-fn safeStorageType(val: u8) ?format.StorageType {
-    inline for (@typeInfo(format.StorageType).@"enum".fields) |f| {
+/// Converts a raw byte to an enum value only if it names a declared tag, so untrusted
+/// input can never produce an invalid enum (undefined behavior in safe builds).
+fn safeEnum(comptime E: type, val: u8) ?E {
+    inline for (@typeInfo(E).@"enum".fields) |f| {
         if (val == f.value) return @enumFromInt(val);
     }
     return null;
+}
+
+fn safeStorageType(val: u8) ?format.StorageType {
+    return safeEnum(format.StorageType, val);
 }
 
 fn safeTileLayout(val: u8) ?format.TileLayout {
-    inline for (@typeInfo(format.TileLayout).@"enum".fields) |f| {
-        if (val == f.value) return @enumFromInt(val);
-    }
-    return null;
+    return safeEnum(format.TileLayout, val);
 }
 
 fn safeSparsityType(val: u8) ?format.SparsityType {
-    inline for (@typeInfo(format.SparsityType).@"enum".fields) |f| {
-        if (val == f.value) return @enumFromInt(val);
-    }
-    return null;
+    return safeEnum(format.SparsityType, val);
 }
 
 pub export fn hk_writer_add_tensor(
@@ -1205,7 +1227,7 @@ pub export fn hk_writer_add_tensor(
     const data_dup = alloc.alloc(u8, @intCast(data_len)) catch return -1;
     @memcpy(data_dup, data_ptr[0..@intCast(data_len)]);
 
-    var shape_arr: [format.MAX_DIMS]u64 = [_]u64{0} ** format.MAX_DIMS;
+    var shape_arr: [format.MAX_DIMS]u64 = @as([format.MAX_DIMS]u64, @splat(0));
     const count = @min(@as(usize, ndim), format.MAX_DIMS);
     for (0..count) |i| {
         shape_arr[i] = shape_ptr[i];
@@ -1334,7 +1356,9 @@ pub export fn hk_gemv_q4_k(W: [*]const u8, x: [*]const f32, bias: ?[*]const f32,
 // ---------------------------------------------------------------------------
 pub const hk_tokenizer_t = opaque {};
 
+/// The tokenizer borrows its vocabulary from the container, so the wrapper owns the reader too.
 const TokenizerWrapper = struct {
+    reader: reader_mod.HKReader,
     tok: tokenizer_mod.Tokenizer,
     allocator: std.mem.Allocator,
 };
@@ -1343,19 +1367,18 @@ pub export fn hk_tokenizer_load_from_file(file_path_c: [*:0]const u8) ?*hk_token
     const path = std.mem.sliceTo(file_path_c, 0);
     const allocator = std.heap.page_allocator;
 
-    var r = reader_mod.HKReader.open(path, allocator) catch return null;
-    defer r.deinit();
-
     const wrapper = allocator.create(TokenizerWrapper) catch return null;
     wrapper.allocator = allocator;
-    wrapper.tok = tokenizer_mod.Tokenizer.init(allocator);
-
-    wrapper.tok.loadFromMetadata(&r.metadata_map) catch {
-        wrapper.tok.deinit();
+    wrapper.reader = reader_mod.HKReader.open(path, allocator) catch {
         allocator.destroy(wrapper);
         return null;
     };
-
+    var diag = tokenizer_mod.Diag{};
+    wrapper.tok = tokenizer_mod.Tokenizer.fromMetadata(allocator, &wrapper.reader.metadata_map, &diag) catch {
+        wrapper.reader.deinit();
+        allocator.destroy(wrapper);
+        return null;
+    };
     return @ptrCast(wrapper);
 }
 
@@ -1363,31 +1386,35 @@ pub export fn hk_tokenizer_free(tok_ptr: ?*hk_tokenizer_t) void {
     if (tok_ptr == null) return;
     const wrapper: *TokenizerWrapper = @ptrCast(@alignCast(tok_ptr));
     wrapper.tok.deinit();
+    wrapper.reader.deinit();
     wrapper.allocator.destroy(wrapper);
 }
 
 pub export fn hk_tokenizer_get_vocab_size(tok_ptr: ?*const hk_tokenizer_t) u32 {
     if (tok_ptr == null) return 0;
     const wrapper: *const TokenizerWrapper = @ptrCast(@alignCast(tok_ptr));
-    return @intCast(wrapper.tok.vocab.items.len);
+    return @intCast(wrapper.tok.count());
 }
 
+/// Encodes `text`. Returns the number of ids written, or 0 on failure. `add_special` asks for
+/// BOS/EOS where the model wants them; `parse_special` turns text like `<|im_start|>` into
+/// control token ids.
 pub export fn hk_tokenizer_encode(
-    tok_ptr: ?*const hk_tokenizer_t,
+    tok_ptr: ?*hk_tokenizer_t,
     text_c: [*:0]const u8,
-    add_bos: c_int,
-    add_eos: c_int,
+    add_special: c_int,
+    parse_special: c_int,
     out_ids: [*]u32,
     max_ids: u32,
 ) u32 {
     if (tok_ptr == null) return 0;
-    const wrapper: *const TokenizerWrapper = @ptrCast(@alignCast(tok_ptr));
+    const wrapper: *TokenizerWrapper = @ptrCast(@alignCast(tok_ptr));
     const text = std.mem.sliceTo(text_c, 0);
 
     var tokens: std.ArrayList(u32) = .empty;
     defer tokens.deinit(wrapper.allocator);
 
-    wrapper.tok.encode(text, add_bos != 0, add_eos != 0, &tokens) catch return 0;
+    wrapper.tok.encode(text, .{ .add_special = add_special != 0, .parse_special = parse_special != 0 }, &tokens) catch return 0;
 
     const count: u32 = @min(@as(u32, @intCast(tokens.items.len)), max_ids);
     @memcpy(out_ids[0..count], tokens.items[0..count]);
@@ -1398,7 +1425,7 @@ pub export fn hk_tokenizer_decode(
     tok_ptr: ?*const hk_tokenizer_t,
     ids_ptr: [*]const u32,
     num_ids: u32,
-    skip_special: c_int,
+    show_special: c_int,
     out_buf: [*]u8,
     max_len: u32,
 ) u32 {
@@ -1408,7 +1435,7 @@ pub export fn hk_tokenizer_decode(
     var text_list: std.ArrayList(u8) = .empty;
     defer text_list.deinit(wrapper.allocator);
 
-    wrapper.tok.decode(ids_ptr[0..num_ids], skip_special != 0, &text_list) catch return 0;
+    wrapper.tok.decode(ids_ptr[0..num_ids], show_special != 0, &text_list) catch return 0;
 
     const count: u32 = @min(@as(u32, @intCast(text_list.items.len)), max_len);
     @memcpy(out_buf[0..count], text_list.items[0..count]);
@@ -1422,38 +1449,56 @@ pub const hk_engine_t = opaque {};
 
 const EngineWrapper = struct {
     reader: reader_mod.HKReader,
-    engine: *inference_mod.TransformerEngine,
+    model: engine_mod.Model,
     allocator: std.mem.Allocator,
 };
 
+/// Loads a model for token by token decoding. Returns null when the file cannot be opened or the
+/// architecture is not supported; use `hk_engine_last_error` for the reason.
 pub export fn hk_engine_load_from_file(file_path_c: [*:0]const u8) ?*hk_engine_t {
     const path = std.mem.sliceTo(file_path_c, 0);
     const allocator = std.heap.page_allocator;
+    engine_error_len = 0;
 
     const wrapper = allocator.create(EngineWrapper) catch return null;
-    errdefer allocator.destroy(wrapper);
-
     wrapper.allocator = allocator;
-    wrapper.reader = reader_mod.HKReader.open(path, allocator) catch {
+    wrapper.reader = reader_mod.HKReader.open(path, allocator) catch |e| {
+        setEngineError("could not open '{s}': {s}", .{ path, @errorName(e) });
         allocator.destroy(wrapper);
         return null;
     };
-    errdefer wrapper.reader.deinit();
-
-    wrapper.engine = inference_mod.TransformerEngine.initFromReader(allocator, &wrapper.reader) catch {
+    var diag = engine_mod.Diag{};
+    wrapper.model = engine_mod.Model.init(allocator, &wrapper.reader, .{}, &diag) catch |e| {
+        setEngineError("{s}: {s}", .{ @errorName(e), diag.message() });
         wrapper.reader.deinit();
         allocator.destroy(wrapper);
         return null;
     };
-
     return @ptrCast(wrapper);
+}
+
+var engine_error_buf: [512]u8 = undefined;
+var engine_error_len: usize = 0;
+
+fn setEngineError(comptime fmt: []const u8, args: anytype) void {
+    const out = std.fmt.bufPrint(&engine_error_buf, fmt, args) catch engine_error_buf[0..0];
+    engine_error_len = out.len;
+}
+
+/// Copies the reason the last `hk_engine_load_from_file` failed into `out` (NUL terminated) and
+/// returns its length, or 0 when there was no failure. Not thread safe.
+pub export fn hk_engine_last_error(out: [*]u8, cap: u32) u32 {
+    if (cap == 0) return 0;
+    const n: usize = @min(engine_error_len, cap - 1);
+    @memcpy(out[0..n], engine_error_buf[0..n]);
+    out[n] = 0;
+    return @intCast(n);
 }
 
 pub export fn hk_engine_free(engine_ptr: ?*hk_engine_t) void {
     if (engine_ptr == null) return;
     const wrapper: *EngineWrapper = @ptrCast(@alignCast(engine_ptr));
-    wrapper.engine.deinit();
-    wrapper.allocator.destroy(wrapper.engine);
+    wrapper.model.deinit();
     wrapper.reader.deinit();
     wrapper.allocator.destroy(wrapper);
 }
@@ -1461,13 +1506,50 @@ pub export fn hk_engine_free(engine_ptr: ?*hk_engine_t) void {
 pub export fn hk_engine_get_vocab_size(engine_ptr: ?*const hk_engine_t) u32 {
     if (engine_ptr == null) return 0;
     const wrapper: *const EngineWrapper = @ptrCast(@alignCast(engine_ptr));
-    return @intCast(wrapper.engine.config.vocab_size);
+    return @intCast(wrapper.model.cfg.vocab);
+}
+
+/// Number of positions the engine can hold before `hk_engine_forward` reports a full context.
+pub export fn hk_engine_get_context_size(engine_ptr: ?*const hk_engine_t) u32 {
+    if (engine_ptr == null) return 0;
+    const wrapper: *const EngineWrapper = @ptrCast(@alignCast(engine_ptr));
+    return @intCast(wrapper.model.n_ctx);
 }
 
 pub export fn hk_engine_reset_cache(engine_ptr: ?*hk_engine_t) void {
     if (engine_ptr == null) return;
     const wrapper: *EngineWrapper = @ptrCast(@alignCast(engine_ptr));
-    wrapper.engine.cache.reset();
+    wrapper.model.kv.truncate(0);
+}
+
+/// Feeds `n` tokens that start at position `pos` and writes the logits of the last one to
+/// `out_logits` (vocabulary sized). Returns 0 on success, -1 for a null argument, -2 when the
+/// context window is full, -3 when `n` exceeds the batch limit, -4 on any other failure.
+pub export fn hk_engine_forward_tokens(
+    engine_ptr: ?*hk_engine_t,
+    tokens: ?[*]const u32,
+    n: u32,
+    pos: u32,
+    out_logits: ?[*]f32,
+) c_int {
+    if (engine_ptr == null or tokens == null or out_logits == null or n == 0) return -1;
+    const wrapper: *EngineWrapper = @ptrCast(@alignCast(engine_ptr));
+    const m = &wrapper.model;
+    var done: usize = 0;
+    while (done < n) {
+        const take = @min(m.n_batch, n - done);
+        m.forward(tokens.?[done..][0..take], pos + done) catch |e| return switch (e) {
+            error.ContextFull => -2,
+            error.BatchTooLarge => -3,
+            else => -4,
+        };
+        done += take;
+        if (done == n) {
+            const logits = m.logitsFor(take - 1);
+            @memcpy(out_logits.?[0..logits.len], logits);
+        }
+    }
+    return 0;
 }
 
 pub export fn hk_engine_forward(
@@ -1476,16 +1558,16 @@ pub export fn hk_engine_forward(
     pos: u32,
     out_logits: [*]f32,
 ) c_int {
-    if (engine_ptr == null) return -1;
-    const wrapper: *EngineWrapper = @ptrCast(@alignCast(engine_ptr));
-    const logits = wrapper.engine.forward(token, pos);
-    @memcpy(out_logits[0..logits.len], logits);
-    return 0;
+    const t = [1]u32{token};
+    return hk_engine_forward_tokens(engine_ptr, &t, 1, pos, out_logits);
 }
 
 // ---------------------------------------------------------------------------
 // Native Sampler C ABI
 // ---------------------------------------------------------------------------
+/// Draws one token from `logits`, which is modified in place. A temperature of 0 is greedy.
+/// Out-of-range values are clamped instead of trusted. Returns 0 if the sampler could not
+/// allocate its scratch space.
 pub export fn hk_sample_token(
     logits_ptr: [*]f32,
     vocab_size: u64,
@@ -1502,14 +1584,17 @@ pub export fn hk_sample_token(
     const logits = logits_ptr[0..@intCast(vocab_size)];
     const history: []const u32 = if (history_ptr) |h| h[0..history_len] else &[_]u32{};
 
-    var sampler = sampling_mod.Sampler.init(seed);
-    return sampler.sample(allocator, logits, .{
-        .temperature = temp,
+    var sampler = sampler_mod.Sampler.init(allocator, seed);
+    defer sampler.deinit();
+    return sampler.sample(logits, history, .{
+        .temperature = if (std.math.isFinite(temp)) @max(temp, 0) else 0,
         .top_k = top_k,
         .top_p = top_p,
         .min_p = min_p,
-        .repetition_penalty = rep_pen,
-    }, history) catch sampling_mod.Sampler.sampleGreedy(logits);
+        .repeat_penalty = if (rep_pen > 0 and std.math.isFinite(rep_pen)) rep_pen else 1.0,
+        .repeat_last_n = 0,
+        .seed = seed,
+    }, false) catch 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -1668,7 +1753,7 @@ pub const C_HardwareCapabilities = extern struct {
     is_apple_silicon: u8,
     has_rocm_ready: u8,
     has_npu_ready: u8,
-    reserved: [5]u8 = [_]u8{0} ** 5,
+    reserved: [5]u8 = @as([5]u8, @splat(0)),
     optimal_page_alignment: u64,
     dma_hugepage_alignment: u64,
 };
@@ -1688,7 +1773,7 @@ pub export fn hk_detect_hardware(out_caps: ?*C_HardwareCapabilities) void {
         .is_apple_silicon = if (caps.is_apple_silicon) 1 else 0,
         .has_rocm_ready = if (caps.has_rocm_ready) 1 else 0,
         .has_npu_ready = if (caps.has_npu_ready) 1 else 0,
-        .reserved = [_]u8{0} ** 5,
+        .reserved = @as([5]u8, @splat(0)),
         .optimal_page_alignment = @intCast(caps.optimal_page_alignment),
         .dma_hugepage_alignment = @intCast(caps.dma_hugepage_alignment),
     };

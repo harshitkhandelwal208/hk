@@ -1,0 +1,75 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+// y[t][r] = dot(row r of W, x[t]) (+ bias[r]) for a few tokens: the decode kernel. A workgroup
+// handles four rows, 32 threads per row, each thread taking every 32nd block of its row.
+
+layout(local_size_x = 128) in;
+layout(std430, binding = 0) readonly buffer W { uint w32[]; };
+layout(std430, binding = 1) readonly buffer X { vec4 x4[]; };
+layout(std430, binding = 2) buffer Y { float y[]; };
+layout(std430, binding = 3) readonly buffer B { float bias[]; };
+layout(push_constant) uniform P {
+    uint rows;
+    uint cols;
+    uint row_bytes;
+    uint x_stride;
+    uint y_stride;
+    uint has_bias;
+    uint x_off;
+    uint y_off;
+    uint lpr;           // lanes per row, a power of two from 4 to 32
+    uint mode;          // 0: y = result, 1: y += result, 2: gate and up rows interleaved, y = silu(gate) * up
+} p;
+
+#include "common.glsl"
+
+shared float red[128];
+shared float red2[128];
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint lpr = p.lpr;
+    uint lane = tid & (lpr - 1u);
+    uint row = gl_WorkGroupID.x * (128u / lpr) + tid / lpr;
+    uint t = gl_WorkGroupID.y;
+    float acc = 0.0;
+    float acc2 = 0.0;
+    if (row < p.rows) {
+        uint units = (p.cols / ELEMS) * NPARTS;
+        uint wrow = p.mode == 2u ? 2u * row : row;
+        uint base = wrow * p.row_bytes;
+        uint xb = p.x_off + t * p.x_stride;
+        // Four units per step so their loads are in flight together.
+        for (uint u0 = lane; u0 < units; u0 += 4u * lpr) {
+            [[unroll]] for (uint k = 0u; k < 4u; k++) {
+                uint u = u0 + k * lpr;
+                if (u < units) {
+                    uint b = u / NPARTS;
+                    uint part = u % NPARTS;
+                    acc += dotpart(base + b * BYTES, xb + b * ELEMS, part);
+                    if (p.mode == 2u) acc2 += dotpart(base + p.row_bytes + b * BYTES, xb + b * ELEMS, part);
+                }
+            }
+        }
+    }
+    red[tid] = acc;
+    red2[tid] = acc2;
+    barrier();
+    for (uint s = lpr >> 1; s > 0u; s >>= 1) {
+        if (lane < s) {
+            red[tid] += red[tid + s];
+            red2[tid] += red2[tid + s];
+        }
+        barrier();
+    }
+    if (lane == 0u && row < p.rows) {
+        uint yi = p.y_off + t * p.y_stride + row;
+        float r = red[tid];
+        if (p.mode == 2u) {
+            y[yi] = r / (1.0 + exp(-r)) * red2[tid];
+        } else {
+            r += p.has_bias != 0u ? bias[row] : 0.0;
+            y[yi] = p.mode == 1u ? y[yi] + r : r;
+        }
+    }
+}

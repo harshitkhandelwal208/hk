@@ -2171,10 +2171,20 @@ class NativeHKTokenizer:
         if not self._ptr:
             raise RuntimeError(f"Failed to load native tokenizer from {file_path}")
 
-    def __del__(self):
-        if hasattr(self, "_ptr") and self._ptr and _LIB is not None:
+    def close(self):
+        """Releases the tokenizer and the file it holds open (Windows cannot delete a mapped file)."""
+        if getattr(self, "_ptr", None) and _LIB is not None:
             _LIB.hk_tokenizer_free(self._ptr)
-            self._ptr = None
+        self._ptr = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
 
     @property
     def vocab_size(self) -> int:

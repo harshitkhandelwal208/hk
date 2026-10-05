@@ -96,18 +96,19 @@ def test_native_tokenizer_roundtrip():
         dummy_tensor = torch.zeros((2, 2), dtype=torch.float32)
         hk.save_file({"dummy": dummy_tensor}, str(hk_file), metadata=meta)
 
-        # Initialize native tokenizer
-        tok = NativeHKTokenizer(hk_file)
-        assert tok.vocab_size == len(tokens)
+        # Initialize native tokenizer. It holds the file mapped, so close it before the temporary
+        # directory goes away (Windows cannot delete a mapped file).
+        with NativeHKTokenizer(hk_file) as tok:
+            assert tok.vocab_size == len(tokens)
 
-        # Test encoding
-        ids = tok.encode("hello", add_bos=True, add_eos=False)
-        assert len(ids) > 0
-        assert ids[0] == 1  # BOS
+            # Test encoding
+            ids = tok.encode("hello", add_bos=True, add_eos=False)
+            assert len(ids) > 0
+            assert ids[0] == 1  # BOS
 
-        # Test decoding
-        text = tok.decode(ids, skip_special_tokens=True)
-        assert "hello" in text
+            # Test decoding
+            text = tok.decode(ids, skip_special_tokens=True)
+            assert "hello" in text
 
 
 @pytest.mark.skipif(not is_native_available(), reason="Native library not compiled")

@@ -178,11 +178,21 @@ fn authorized(srv: *Server, req: *std.http.Server.Request) bool {
     return false;
 }
 
-fn readBody(req: *std.http.Server.Request, a: std.mem.Allocator, limit: usize) ![]u8 {
-    var buf: [4096]u8 = undefined;
-    const reader = try req.readerExpectContinue(&buf);
+/// How much of an oversized body is read and thrown away after the 413 has been sent.
+const drain_limit: usize = 64 << 20;
+
+/// Reads the request body. When it exceeds `limit`, `rest` is set to the body reader so the caller
+/// can answer 413 and then drain what is still in flight: closing a connection that has unread
+/// data makes the peer's stack send a reset, and on some systems (macOS) that reset wipes out the
+/// response before the client has read it.
+fn readBody(req: *std.http.Server.Request, a: std.mem.Allocator, limit: usize, rest: *?*std.Io.Reader) ![]u8 {
+    const buf = try a.alloc(u8, 4096);
+    const reader = try req.readerExpectContinue(buf);
     return reader.allocRemaining(a, .limited(limit)) catch |e| switch (e) {
-        error.StreamTooLong => error.BodyTooLarge,
+        error.StreamTooLong => {
+            rest.* = reader;
+            return error.BodyTooLarge;
+        },
         else => error.ReadFailed,
     };
 }
@@ -230,9 +240,11 @@ fn handle(srv: *Server, req: *std.http.Server.Request) !bool {
         return true;
     }
     if (method == .POST) {
-        const body = readBody(req, a, srv.cfg.max_body_bytes) catch |e| {
+        var rest: ?*std.Io.Reader = null;
+        const body = readBody(req, a, srv.cfg.max_body_bytes, &rest) catch |e| {
             const status: std.http.Status = if (e == error.BodyTooLarge) .payload_too_large else .bad_request;
             try respondError(req, a, status, "invalid_request_error", if (e == error.BodyTooLarge) "the request body is too large" else "could not read the request body");
+            if (rest) |r| _ = r.discard(.limited(drain_limit)) catch {};
             return false;
         };
         if (std.mem.eql(u8, path, "/v1/chat/completions") or std.mem.eql(u8, path, "/chat/completions")) {

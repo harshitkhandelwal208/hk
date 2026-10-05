@@ -89,6 +89,12 @@ jobs:
           hk --help
 
       - name: Run Pytest Suite
+        # Some hosted runners report CPU features their VM cannot execute, and PyTorch's oneDNN
+        # kernels then die with an illegal instruction inside F.linear (seen on one Windows
+        # runner, in a bf16/fp16 test that never touches HK code). Capping oneDNN's ISA avoids it.
+        env:
+          ONEDNN_MAX_CPU_ISA: AVX2
+          DNNL_MAX_CPU_ISA: AVX2
         run: |
           pytest tests/ -v --durations=10
 

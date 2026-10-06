@@ -1,0 +1,6299 @@
+{
+ "schema_version": 1,
+ "as_of": "2026-10-06 (commit 43cf891 + uncommitted integrity/transaction work)",
+ "generated_by": "docs/graph/gen_graph.py",
+ "stats": {
+  "curated_nodes": 79,
+  "curated_edges": 153,
+  "file_nodes": 167,
+  "import_edges": 368,
+  "unowned_files": 0,
+  "status_counts": {
+   "done": 8,
+   "partial": 14,
+   "in-progress": 2,
+   "prototype": 8,
+   "storage-only": 1,
+   "legacy": 2,
+   "untested-hw": 0,
+   "not-started": 24
+  }
+ },
+ "nodes": [
+  {
+   "id": "hk",
+   "type": "root",
+   "label": "HK",
+   "status": "partial",
+   "plan": [
+    0,
+    159,
+    160
+   ],
+   "paths": [],
+   "note": "Universal neural model platform: container + runtime + research + tooling on one foundation."
+  },
+  {
+   "id": "container",
+   "type": "system",
+   "label": "Container (.hk format)",
+   "status": "partial",
+   "plan": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ],
+   "paths": [],
+   "note": "Universal model representation."
+  },
+  {
+   "id": "runtime",
+   "type": "system",
+   "label": "Runtime (inference)",
+   "status": "partial",
+   "plan": [
+    9,
+    56,
+    57,
+    76,
+    77
+   ],
+   "paths": [],
+   "note": "Fast memory-efficient inference; today CPU + Vulkan on Linux, 3 architecture families."
+  },
+  {
+   "id": "research",
+   "type": "system",
+   "label": "Research stack",
+   "status": "prototype",
+   "plan": [
+    22,
+    28,
+    32,
+    105
+   ],
+   "paths": [],
+   "note": "Quantization, sparsity, growth, lineage, self-training. Python prototypes, small-model tests only."
+  },
+  {
+   "id": "tooling",
+   "type": "system",
+   "label": "Tooling",
+   "status": "partial",
+   "plan": [
+    91,
+    93,
+    124
+   ],
+   "paths": [],
+   "note": "Conversion, serving, SDKs, benchmarks, packaging."
+  },
+  {
+   "id": "format-core",
+   "type": "subsystem",
+   "label": "Header / TOC / metadata / reader / writer",
+   "status": "done",
+   "plan": [
+    3,
+    4
+   ],
+   "paths": [
+    "src/format.zig",
+    "src/reader.zig",
+    "src/writer.zig",
+    "src/metadata.zig",
+    "src/tensor_toc.zig",
+    "src/buf.zig",
+    "src/arrays.zig"
+   ],
+   "note": "128-byte header, aligned payloads, v1. Reader bounds hardening is uncommitted. arrays.zig holds compact in-place array values for metadata (e.g. 150k-token vocabularies)."
+  },
+  {
+   "id": "integrity",
+   "type": "subsystem",
+   "label": "Whole-file SHA-256 seal + CRC-32 records",
+   "status": "in-progress",
+   "plan": [
+    4
+   ],
+   "paths": [
+    "src/integrity.zig"
+   ],
+   "note": "Uncommitted. Re-hashes whole file per mutation (O(file) time). No signatures."
+  },
+  {
+   "id": "transaction",
+   "type": "subsystem",
+   "label": "Metadata edit journal / hk repair",
+   "status": "in-progress",
+   "plan": [
+    5
+   ],
+   "paths": [
+    "src/transaction.zig"
+   ],
+   "note": "Uncommitted. Metadata prefix only; appendix and full writes not atomic; no compact/fsck."
+  },
+  {
+   "id": "appendix-lineage",
+   "type": "subsystem",
+   "label": "Appendix + hash-chain lineage",
+   "status": "done",
+   "plan": [
+    37
+   ],
+   "paths": [
+    "src/appendix.zig",
+    "python/hk/adaptive/appendix.py"
+   ],
+   "note": "Linear chain, rollback. No signatures/branching/merging. Engine ignores appendix records."
+  },
+  {
+   "id": "platform-mmap",
+   "type": "subsystem",
+   "label": "Platform / mmap",
+   "status": "partial",
+   "plan": [
+    7,
+    8
+   ],
+   "paths": [
+    "src/platform.zig"
+   ],
+   "note": "POSIX mmap done; Windows mapping unrun; no huge pages / NUMA / madvise."
+  },
+  {
+   "id": "quant-formats",
+   "type": "subsystem",
+   "label": "Quantization formats (26)",
+   "status": "done",
+   "plan": [
+    3,
+    21
+   ],
+   "paths": [
+    "src/quant",
+    "src/quant.zig",
+    "tests/test_quant.zig",
+    "tests/fixtures/quants"
+   ],
+   "note": "Decoder + vecdot + batch kernel for each; reference-tested. DQ*/NF4 are storage + Python only."
+  },
+  {
+   "id": "sparsity-storage",
+   "type": "subsystem",
+   "label": "Sparse storage (2:4, bitmask, CSR, BSR)",
+   "status": "storage-only",
+   "plan": [
+    26,
+    27
+   ],
+   "paths": [
+    "src/sparsity.zig",
+    "src/tiling.zig"
+   ],
+   "note": "Reader decodes to f32; no sparse kernels in the engine."
+  },
+  {
+   "id": "nf4-dq",
+   "type": "subsystem",
+   "label": "NF4 / DQ dual-mode quantization",
+   "status": "prototype",
+   "plan": [
+    22,
+    23
+   ],
+   "paths": [
+    "src/nf4.zig",
+    "python/hk/quantization.py"
+   ],
+   "note": "Quantize/dequantize pairs; no runtime residual policy; engine refuses."
+  },
+  {
+   "id": "engine",
+   "type": "subsystem",
+   "label": "CPU inference engine",
+   "status": "done",
+   "plan": [
+    1,
+    9,
+    16,
+    46
+   ],
+   "paths": [
+    "src/engine",
+    "src/engine.zig",
+    "src/cores.zig",
+    "src/pool.zig"
+   ],
+   "note": "Dense decoder, GQA, RMSNorm, gated MLP; Arch enum has 3 values. Weights are views of the mapped file."
+  },
+  {
+   "id": "kernels-engine",
+   "type": "subsystem",
+   "label": "ISA-dispatched kernels (engine stack)",
+   "status": "done",
+   "plan": [
+    9,
+    10,
+    11,
+    14
+   ],
+   "paths": [
+    "src/kernels",
+    "src/kernels.zig",
+    "src/kernels_impl.zig"
+   ],
+   "note": "x86: avx512/avx2vnni/avx2/generic. ARM: dotprod/neon (never run on ARM)."
+  },
+  {
+   "id": "kernels-legacy",
+   "type": "subsystem",
+   "label": "Legacy kernels (C ABI / Python stack)",
+   "status": "legacy",
+   "plan": [
+    9,
+    15,
+    17,
+    20
+   ],
+   "paths": [
+    "src/tensor_ops.zig",
+    "src/quantization.zig"
+   ],
+   "note": "Holds v1.1.0 gemmF32 zero-skip, RoPE table, FP8 LUT. Not used by the engine."
+  },
+  {
+   "id": "kv-cache",
+   "type": "subsystem",
+   "label": "KV cache (segmented f16)",
+   "status": "partial",
+   "plan": [
+    80,
+    50
+   ],
+   "paths": [
+    "src/engine/kv.zig"
+   ],
+   "note": "256-position segments, tiled keys. No paging/quant/compression/eviction."
+  },
+  {
+   "id": "sampler",
+   "type": "subsystem",
+   "label": "Sampler",
+   "status": "partial",
+   "plan": [
+    52
+   ],
+   "paths": [
+    "src/sampler.zig"
+   ],
+   "note": "greedy/temp/top-k/top-p/min-p/penalties/logit-bias. No typical/mirostat/custom/GPU."
+  },
+  {
+   "id": "tokenizer",
+   "type": "subsystem",
+   "label": "Tokenizer + chat templates",
+   "status": "done",
+   "plan": [
+    53,
+    99
+   ],
+   "paths": [
+    "src/tokenizer",
+    "src/tokenizer.zig",
+    "src/chat",
+    "src/chat.zig"
+   ],
+   "note": "BPE + SentencePiece; Jinja subset; checked vs llama.cpp on 301,948 tokens."
+  },
+  {
+   "id": "backend-vulkan",
+   "type": "backend",
+   "label": "Vulkan backend",
+   "status": "partial",
+   "plan": [
+    60,
+    72
+   ],
+   "paths": [
+    "src/vk",
+    "shaders"
+   ],
+   "note": "Whole model on one device; one NVIDIA card tested; slower than llama.cpp Vulkan; no coop matrices."
+  },
+  {
+   "id": "backend-cuda-standalone",
+   "type": "backend",
+   "label": "CUDA (standalone, not in engine)",
+   "status": "legacy",
+   "plan": [
+    57
+   ],
+   "paths": [
+    "src/cuda.zig",
+    "src/cuda",
+    "tests/test_cuda.zig",
+    "tools/hk_gpu_bench.zig"
+   ],
+   "note": "Driver-API wrapper + embedded PTX; only bench and its own tests use it."
+  },
+  {
+   "id": "server",
+   "type": "subsystem",
+   "label": "OpenAI-compatible server",
+   "status": "partial",
+   "plan": [
+    77,
+    78,
+    79,
+    125
+   ],
+   "paths": [
+    "src/server",
+    "src/server.zig",
+    "tests/server_tests.zig"
+   ],
+   "note": "chat/completions, completions, models, health, metrics, SSE, API key, slots. No embeddings/rerank/WebSocket/HTTP2/rate limits."
+  },
+  {
+   "id": "c-abi",
+   "type": "subsystem",
+   "label": "Library root + C ABI (libhk)",
+   "status": "partial",
+   "plan": [
+    147
+   ],
+   "paths": [
+    "src/c_api.zig",
+    "include/hk.h",
+    "include/hk.hpp",
+    "src/root.zig",
+    "src/context.zig",
+    "src/pipeline.zig"
+   ],
+   "note": "~133 exports; no ABI version / struct-size / capability discovery."
+  },
+  {
+   "id": "hub-pull",
+   "type": "subsystem",
+   "label": "Hub downloader (hk pull)",
+   "status": "partial",
+   "plan": [
+    93
+   ],
+   "paths": [
+    "src/hub",
+    "src/hub.zig",
+    "tools/cli_hub.zig",
+    "tests/hub_tests.zig",
+    "tests/support/mock_hub.zig"
+   ],
+   "note": "Resume, retries, SHA-256; GGUF + sharded safetensors. No split-GGUF, parallel, S3, registry."
+  },
+  {
+   "id": "converters",
+   "type": "subsystem",
+   "label": "Streaming converters",
+   "status": "partial",
+   "plan": [
+    90,
+    95
+   ],
+   "paths": [
+    "src/convert",
+    "src/convert.zig",
+    "src/gguf.zig",
+    "src/safetensors.zig",
+    "src/hf_mapper.zig"
+   ],
+   "note": "GGUF/safetensors/HF \u2192 .hk streaming; .hk \u2192 safetensors/GGUF. BPE-only tokenizer.json import."
+  },
+  {
+   "id": "cli",
+   "type": "subsystem",
+   "label": "hk CLI",
+   "status": "partial",
+   "plan": [
+    124
+   ],
+   "paths": [
+    "tools/hk_cli.zig",
+    "src/main.zig",
+    "tests/cli_tests.zig"
+   ],
+   "note": "~30 commands; missing quantize/compact/fsck/history/diff/merge/sign/profile/distributed."
+  },
+  {
+   "id": "bench-tools",
+   "type": "subsystem",
+   "label": "Benchmarks (hk-compare, hk-kernels)",
+   "status": "partial",
+   "plan": [
+    85,
+    84
+   ],
+   "paths": [
+    "tools/hk_compare.zig",
+    "tools/hk_probe.zig",
+    "tests/bench_kernels.zig",
+    "benchmarks"
+   ],
+   "note": "Reproducible vs llama.cpp only."
+  },
+  {
+   "id": "bindings",
+   "type": "subsystem",
+   "label": "Language bindings",
+   "status": "partial",
+   "plan": [
+    91
+   ],
+   "paths": [
+    "bindings",
+    "tests/bindings",
+    "examples"
+   ],
+   "note": "C, C++, Rust, Go, C#, Java, TypeScript tested. Kotlin/Swift/ObjC absent."
+  },
+  {
+   "id": "python-sdk",
+   "type": "subsystem",
+   "label": "Python SDK",
+   "status": "partial",
+   "plan": [
+    87,
+    88,
+    89
+   ],
+   "paths": [
+    "python/hk/native.py",
+    "python/hk/torch.py",
+    "python/hk/modeling.py",
+    "python/hk/models.py",
+    "python/hk/hf_mapper.py",
+    "python/hk/tokenizer.py",
+    "python/hk/composite.py",
+    "python/hk/pipeline.py",
+    "python/hk/offload.py",
+    "python/hk/config.py",
+    "python/hk"
+   ],
+   "note": "Native engine/tokenizer wrappers + torch integration. No DLPack; NativeHKTensor/Model/Trainer absent."
+  },
+  {
+   "id": "architecture-registry",
+   "type": "subsystem",
+   "label": "Python architecture registry (169 aliases / 79 names)",
+   "status": "prototype",
+   "plan": [
+    46,
+    47
+   ],
+   "paths": [
+    "python/hk/models.py",
+    "python/hk/constants.py"
+   ],
+   "note": "Conversion/tensor-name mapping only. NOT engine support."
+  },
+  {
+   "id": "gui",
+   "type": "subsystem",
+   "label": "Model editor GUI",
+   "status": "prototype",
+   "plan": [
+    97
+   ],
+   "paths": [
+    "tools/hk_editor_gui.py",
+    "python/hk/gui.py"
+   ],
+   "note": ""
+  },
+  {
+   "id": "ci",
+   "type": "subsystem",
+   "label": "CI",
+   "status": "partial",
+   "plan": [
+    138
+   ],
+   "paths": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/wiki-sync.yml"
+   ],
+   "note": "Zig tests on 3 OSes, forced-ISA runs, cross-compile matrix, Python matrix, bindings. No GPU/ARM/mobile hardware."
+  },
+  {
+   "id": "docs-wiki",
+   "type": "doc",
+   "label": "User wiki",
+   "status": "done",
+   "plan": [
+    145
+   ],
+   "paths": [
+    "docs/wiki",
+    "README.md",
+    "CHANGELOG.md"
+   ],
+   "note": "Rewritten in 1.1.1 against the code; auto-synced to GitHub wiki."
+  },
+  {
+   "id": "growth",
+   "type": "subsystem",
+   "label": "Net2Net growth",
+   "status": "prototype",
+   "plan": [
+    28,
+    29,
+    30,
+    31
+   ],
+   "paths": [
+    "src/growth.zig",
+    "src/expansion.zig",
+    "src/adaptive.zig",
+    "python/hk/adaptive/growth.py",
+    "python/hk/adaptive/expansion_evaluator.py",
+    "python/hk/adaptive/topology.py"
+   ],
+   "note": "Wider SwiGLU/linear + vocab; deeper only in Python (linear). Small-model tests."
+  },
+  {
+   "id": "pruning",
+   "type": "subsystem",
+   "label": "Pruning",
+   "status": "prototype",
+   "plan": [
+    25
+   ],
+   "paths": [
+    "python/hk/pruning.py"
+   ],
+   "note": "Magnitude, Wanda, structured L2, block, 2:4, recovery fine-tune."
+  },
+  {
+   "id": "trainer",
+   "type": "subsystem",
+   "label": "HKTrainer / LoRA / QLoRA",
+   "status": "prototype",
+   "plan": [
+    40,
+    41
+   ],
+   "paths": [
+    "python/hk/trainer.py",
+    "python/hk/adaptive/self_play.py"
+   ],
+   "note": "PyTorch-based; no native/distributed trainer; engine can't apply adapters."
+  },
+  {
+   "id": "self-training",
+   "type": "subsystem",
+   "label": "Self-training / self-conversation / SPIN",
+   "status": "prototype",
+   "plan": [
+    32,
+    34,
+    35
+   ],
+   "paths": [
+    "python/hk/adaptive/self_training.py",
+    "python/hk/adaptive/self_conversation.py",
+    "python/hk/adaptive/self_play.py"
+   ],
+   "note": "Components, not a validated loop. No demonstrated improvement."
+  },
+  {
+   "id": "code-sandbox",
+   "type": "subsystem",
+   "label": "Code sandboxes",
+   "status": "prototype",
+   "plan": [
+    33
+   ],
+   "paths": [
+    "python/hk/adaptive/code_eval.py",
+    "src/sandbox.zig"
+   ],
+   "note": "PLAN VIOLATION: Docker mode silently degrades to unsandboxed subprocess; Zig NativeSandbox does not enforce its timeout and is unused."
+  },
+  {
+   "id": "backend-abstraction",
+   "type": "planned",
+   "label": "Backend abstraction (Backend interface)",
+   "status": "not-started",
+   "plan": [
+    1,
+    131,
+    132,
+    136,
+    137
+   ],
+   "paths": [],
+   "note": "Gate for CUDA/Metal/ROCm. engine/model.zig calls the Vulkan engine directly today."
+  },
+  {
+   "id": "op-capability-table",
+   "type": "planned",
+   "label": "Operator capability system + tiered fallback",
+   "status": "not-started",
+   "plan": [
+    136,
+    137
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "graph-ir",
+   "type": "planned",
+   "label": "Graph runtime / HK IR / fusion / liveness",
+   "status": "not-started",
+   "plan": [
+    131,
+    132,
+    133,
+    134,
+    135
+   ],
+   "paths": [],
+   "note": "Forward pass is hand-written; fusion is manual. No zgc code exists despite a commit message."
+  },
+  {
+   "id": "memory-planner",
+   "type": "planned",
+   "label": "Unified memory planner + partial offload",
+   "status": "not-started",
+   "plan": [
+    1,
+    73,
+    134
+   ],
+   "paths": [],
+   "note": "Python offload.py is a torch-based planner only."
+  },
+  {
+   "id": "backend-cuda-engine",
+   "type": "planned",
+   "label": "CUDA engine backend (Tensor Cores, graphs)",
+   "status": "not-started",
+   "plan": [
+    57,
+    150
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "backend-metal",
+   "type": "planned",
+   "label": "Metal backend",
+   "status": "not-started",
+   "plan": [
+    59,
+    66
+   ],
+   "paths": [],
+   "note": "Needs Apple hardware."
+  },
+  {
+   "id": "backend-rocm",
+   "type": "planned",
+   "label": "ROCm / HIP backend",
+   "status": "not-started",
+   "plan": [
+    58
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "backend-npu",
+   "type": "planned",
+   "label": "NPU backends (QNN, CoreML, NNAPI, OpenVINO)",
+   "status": "not-started",
+   "plan": [
+    62,
+    63,
+    64,
+    65
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "backend-directml-xpu",
+   "type": "planned",
+   "label": "DirectML / D3D12 / Intel XPU",
+   "status": "not-started",
+   "plan": [
+    61,
+    62
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "mobile-runtime",
+   "type": "planned",
+   "label": "Android / iOS runtime + SDKs",
+   "status": "not-started",
+   "plan": [
+    64,
+    65,
+    119,
+    121,
+    122
+   ],
+   "paths": [],
+   "note": "Java JNI glue exists but is not an Android package."
+  },
+  {
+   "id": "wasm-webgpu",
+   "type": "planned",
+   "label": "WASM / WebGPU runtime",
+   "status": "not-started",
+   "plan": [
+    70
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "arch-descriptor",
+   "type": "planned",
+   "label": "ArchitectureDescriptor/Parser/Validator/Executor",
+   "status": "not-started",
+   "plan": [
+    46,
+    47
+   ],
+   "paths": [],
+   "note": "Replaces the 3-value Arch enum; needed for Gemma/Phi/MoE/SSM."
+  },
+  {
+   "id": "moe-ssm-multimodal",
+   "type": "planned",
+   "label": "MoE, SSM (Mamba), sliding-window, multimodal",
+   "status": "not-started",
+   "plan": [
+    48,
+    49,
+    54,
+    55
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "continuous-batching",
+   "type": "planned",
+   "label": "Continuous batching + paged KV + prefix cache",
+   "status": "not-started",
+   "plan": [
+    78,
+    79,
+    80
+   ],
+   "paths": [],
+   "note": "Slot scheduler and shared prompt cache exist."
+  },
+  {
+   "id": "speculative-grammar",
+   "type": "planned",
+   "label": "Speculative decoding + grammar/structured output",
+   "status": "not-started",
+   "plan": [
+    51,
+    53
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "sparse-execution",
+   "type": "planned",
+   "label": "Sparse execution (2:4, Tensor Core sparse)",
+   "status": "not-started",
+   "plan": [
+    26,
+    27
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "dual-mode-runtime",
+   "type": "planned",
+   "label": "Dual-mode quant runtime + auto mixed precision",
+   "status": "not-started",
+   "plan": [
+    23,
+    24
+   ],
+   "paths": [],
+   "note": "`hk quantize` does not exist."
+  },
+  {
+   "id": "signatures-registry",
+   "type": "planned",
+   "label": "Signatures, trusted publishers, model registry",
+   "status": "not-started",
+   "plan": [
+    4,
+    37,
+    94
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "lineage-vcs",
+   "type": "planned",
+   "label": "Branching/merging/deltas/adapter execution",
+   "status": "not-started",
+   "plan": [
+    37,
+    38,
+    39,
+    40
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "distributed",
+   "type": "planned",
+   "label": "Multi-GPU / distributed inference + training",
+   "status": "not-started",
+   "plan": [
+    74,
+    75,
+    115
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "profiling-autotune",
+   "type": "planned",
+   "label": "hk profile + autotuning + persistent kernel cache",
+   "status": "not-started",
+   "plan": [
+    83,
+    84,
+    142
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "fuzzing",
+   "type": "planned",
+   "label": "Fuzzing + malicious-file corpus",
+   "status": "not-started",
+   "plan": [
+    100,
+    101
+   ],
+   "paths": [],
+   "note": "Only Zig's scaffold fuzz example exists."
+  },
+  {
+   "id": "model-evolution",
+   "type": "planned",
+   "label": "Model-evolution loop + architecture search",
+   "status": "not-started",
+   "plan": [
+    112,
+    113,
+    114,
+    155
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "extension-system",
+   "type": "planned",
+   "label": "Plugin / extension system + stable ABI v1",
+   "status": "not-started",
+   "plan": [
+    146,
+    147
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "ms-2.0",
+   "type": "milestone",
+   "label": "HK 2.0 Unified Runtime",
+   "status": "partial",
+   "plan": [
+    150
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "ms-2.1",
+   "type": "milestone",
+   "label": "HK 2.1 Hardware Acceleration",
+   "status": "not-started",
+   "plan": [
+    150
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "ms-2.2",
+   "type": "milestone",
+   "label": "HK 2.2 Model Compatibility",
+   "status": "partial",
+   "plan": [
+    150
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "ms-2.3",
+   "type": "milestone",
+   "label": "HK 2.3 Server Runtime",
+   "status": "partial",
+   "plan": [
+    150
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "ms-2.4",
+   "type": "milestone",
+   "label": "HK 2.4 Universal Format",
+   "status": "in-progress",
+   "plan": [
+    150
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "ms-2.5",
+   "type": "milestone",
+   "label": "HK 2.5 Training Platform",
+   "status": "prototype",
+   "plan": [
+    150
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "ms-2.6",
+   "type": "milestone",
+   "label": "HK 2.6 Adaptive Research",
+   "status": "prototype",
+   "plan": [
+    150
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "ms-2.7",
+   "type": "milestone",
+   "label": "HK 2.7 Self-Improvement",
+   "status": "prototype",
+   "plan": [
+    150
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "ms-3.0",
+   "type": "milestone",
+   "label": "HK 3.0 Universal Neural Runtime",
+   "status": "not-started",
+   "plan": [
+    150
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "rule-memory",
+   "type": "constraint",
+   "label": "Memory efficiency is the product",
+   "status": "done",
+   "plan": [
+    1,
+    154
+   ],
+   "paths": [],
+   "note": "Stream, mmap, bounded buffers, measure peak RSS, flag O(model) paths. Owner rule."
+  },
+  {
+   "id": "rule-robust",
+   "type": "constraint",
+   "label": "Robustness: no silent failure; tests must bite",
+   "status": "done",
+   "plan": [
+    100,
+    158
+   ],
+   "paths": [],
+   "note": "Flag or blank instead of guessing; mutation-check guards; state limits honestly. Owner rule."
+  },
+  {
+   "id": "rule-truthful-docs",
+   "type": "constraint",
+   "label": "Docs state only what was run",
+   "status": "done",
+   "plan": [
+    148
+   ],
+   "paths": [],
+   "note": "1.1.1 removed overstated claims; do not reintroduce."
+  },
+  {
+   "id": "rule-benchmark",
+   "type": "constraint",
+   "label": "No 'faster' without a benchmark",
+   "status": "done",
+   "plan": [
+    1,
+    85
+   ],
+   "paths": [
+    "tools/hk_compare.zig"
+   ],
+   "note": "Plan \u00a71.5."
+  },
+  {
+   "id": "rule-hierarchy",
+   "type": "constraint",
+   "label": "Quality > correctness > memory/IO > compute > accel > distributed > research",
+   "status": "done",
+   "plan": [
+    158
+   ],
+   "paths": [],
+   "note": ""
+  },
+  {
+   "id": "rule-zig-016",
+   "type": "constraint",
+   "label": "Zig 0.16 (std.Io), per-ISA kernel builds",
+   "status": "done",
+   "plan": [],
+   "paths": [
+    "build.zig",
+    "build.zig.zon"
+   ],
+   "note": "minimum_zig_version 0.16.0."
+  },
+  {
+   "id": "tests-suite",
+   "type": "subsystem",
+   "label": "Test suites",
+   "status": "partial",
+   "plan": [
+    102,
+    103,
+    104,
+    138
+   ],
+   "paths": [
+    "tests"
+   ],
+   "note": "Zig unit/e2e suites, pytest, bindings runner. Reference tests: gguf package (quant decoders), HF Transformers (logits), llama.cpp (perplexity, tokenizer). No MMLU/code/math/long-context suites; no fuzzing."
+  },
+  {
+   "id": "dev-tools",
+   "type": "subsystem",
+   "label": "Dev tools (generators, probes, HF Space app)",
+   "status": "done",
+   "plan": [
+    84
+   ],
+   "paths": [
+    "tools"
+   ],
+   "note": "Quant fixture/table and Unicode table generators, hk-probe, SPIR-V extraction helper, HF Space demo."
+  },
+  {
+   "id": "file:python/hk/__init__.py",
+   "type": "file",
+   "label": "python/hk/__init__.py",
+   "lang": "python",
+   "loc": 231,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/adaptive/__init__.py",
+   "type": "file",
+   "label": "python/hk/adaptive/__init__.py",
+   "lang": "python",
+   "loc": 102,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/adaptive/appendix.py",
+   "type": "file",
+   "label": "python/hk/adaptive/appendix.py",
+   "lang": "python",
+   "loc": 341,
+   "owner": "appendix-lineage"
+  },
+  {
+   "id": "file:python/hk/adaptive/code_eval.py",
+   "type": "file",
+   "label": "python/hk/adaptive/code_eval.py",
+   "lang": "python",
+   "loc": 266,
+   "owner": "code-sandbox"
+  },
+  {
+   "id": "file:python/hk/adaptive/expansion_evaluator.py",
+   "type": "file",
+   "label": "python/hk/adaptive/expansion_evaluator.py",
+   "lang": "python",
+   "loc": 145,
+   "owner": "growth"
+  },
+  {
+   "id": "file:python/hk/adaptive/growth.py",
+   "type": "file",
+   "label": "python/hk/adaptive/growth.py",
+   "lang": "python",
+   "loc": 576,
+   "owner": "growth"
+  },
+  {
+   "id": "file:python/hk/adaptive/self_conversation.py",
+   "type": "file",
+   "label": "python/hk/adaptive/self_conversation.py",
+   "lang": "python",
+   "loc": 188,
+   "owner": "self-training"
+  },
+  {
+   "id": "file:python/hk/adaptive/self_play.py",
+   "type": "file",
+   "label": "python/hk/adaptive/self_play.py",
+   "lang": "python",
+   "loc": 165,
+   "owner": "trainer"
+  },
+  {
+   "id": "file:python/hk/adaptive/self_training.py",
+   "type": "file",
+   "label": "python/hk/adaptive/self_training.py",
+   "lang": "python",
+   "loc": 281,
+   "owner": "self-training"
+  },
+  {
+   "id": "file:python/hk/adaptive/topology.py",
+   "type": "file",
+   "label": "python/hk/adaptive/topology.py",
+   "lang": "python",
+   "loc": 148,
+   "owner": "growth"
+  },
+  {
+   "id": "file:python/hk/benchmark.py",
+   "type": "file",
+   "label": "python/hk/benchmark.py",
+   "lang": "python",
+   "loc": 120,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/cli.py",
+   "type": "file",
+   "label": "python/hk/cli.py",
+   "lang": "python",
+   "loc": 78,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/composite.py",
+   "type": "file",
+   "label": "python/hk/composite.py",
+   "lang": "python",
+   "loc": 965,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/config.py",
+   "type": "file",
+   "label": "python/hk/config.py",
+   "lang": "python",
+   "loc": 186,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/constants.py",
+   "type": "file",
+   "label": "python/hk/constants.py",
+   "lang": "python",
+   "loc": 315,
+   "owner": "architecture-registry"
+  },
+  {
+   "id": "file:python/hk/flax.py",
+   "type": "file",
+   "label": "python/hk/flax.py",
+   "lang": "python",
+   "loc": 103,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/format.py",
+   "type": "file",
+   "label": "python/hk/format.py",
+   "lang": "python",
+   "loc": 266,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/gguf_parser.py",
+   "type": "file",
+   "label": "python/hk/gguf_parser.py",
+   "lang": "python",
+   "loc": 265,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/gui.py",
+   "type": "file",
+   "label": "python/hk/gui.py",
+   "lang": "python",
+   "loc": 33,
+   "owner": "gui"
+  },
+  {
+   "id": "file:python/hk/hf_mapper.py",
+   "type": "file",
+   "label": "python/hk/hf_mapper.py",
+   "lang": "python",
+   "loc": 940,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/jax.py",
+   "type": "file",
+   "label": "python/hk/jax.py",
+   "lang": "python",
+   "loc": 69,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/modeling.py",
+   "type": "file",
+   "label": "python/hk/modeling.py",
+   "lang": "python",
+   "loc": 844,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/models.py",
+   "type": "file",
+   "label": "python/hk/models.py",
+   "lang": "python",
+   "loc": 443,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/native.py",
+   "type": "file",
+   "label": "python/hk/native.py",
+   "lang": "python",
+   "loc": 2659,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/numpy.py",
+   "type": "file",
+   "label": "python/hk/numpy.py",
+   "lang": "python",
+   "loc": 158,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/offload.py",
+   "type": "file",
+   "label": "python/hk/offload.py",
+   "lang": "python",
+   "loc": 406,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/pipeline.py",
+   "type": "file",
+   "label": "python/hk/pipeline.py",
+   "lang": "python",
+   "loc": 190,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/pruning.py",
+   "type": "file",
+   "label": "python/hk/pruning.py",
+   "lang": "python",
+   "loc": 343,
+   "owner": "pruning"
+  },
+  {
+   "id": "file:python/hk/quantization.py",
+   "type": "file",
+   "label": "python/hk/quantization.py",
+   "lang": "python",
+   "loc": 692,
+   "owner": "nf4-dq"
+  },
+  {
+   "id": "file:python/hk/raw.py",
+   "type": "file",
+   "label": "python/hk/raw.py",
+   "lang": "python",
+   "loc": 411,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/remote.py",
+   "type": "file",
+   "label": "python/hk/remote.py",
+   "lang": "python",
+   "loc": 297,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/tokenizer.py",
+   "type": "file",
+   "label": "python/hk/tokenizer.py",
+   "lang": "python",
+   "loc": 860,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/torch.py",
+   "type": "file",
+   "label": "python/hk/torch.py",
+   "lang": "python",
+   "loc": 1181,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/trainer.py",
+   "type": "file",
+   "label": "python/hk/trainer.py",
+   "lang": "python",
+   "loc": 453,
+   "owner": "trainer"
+  },
+  {
+   "id": "file:shaders/add.comp",
+   "type": "file",
+   "label": "shaders/add.comp",
+   "lang": "glsl",
+   "loc": 10,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/attention.comp",
+   "type": "file",
+   "label": "shaders/attention.comp",
+   "lang": "glsl",
+   "loc": 115,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/common.glsl",
+   "type": "file",
+   "label": "shaders/common.glsl",
+   "lang": "glsl",
+   "loc": 464,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/embed.comp",
+   "type": "file",
+   "label": "shaders/embed.comp",
+   "lang": "glsl",
+   "loc": 19,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/mm.comp",
+   "type": "file",
+   "label": "shaders/mm.comp",
+   "lang": "glsl",
+   "loc": 75,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/mmv.comp",
+   "type": "file",
+   "label": "shaders/mmv.comp",
+   "lang": "glsl",
+   "loc": 75,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/rmsnorm.comp",
+   "type": "file",
+   "label": "shaders/rmsnorm.comp",
+   "lang": "glsl",
+   "loc": 29,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/rope_kv.comp",
+   "type": "file",
+   "label": "shaders/rope_kv.comp",
+   "lang": "glsl",
+   "loc": 104,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/swiglu.comp",
+   "type": "file",
+   "label": "shaders/swiglu.comp",
+   "lang": "glsl",
+   "loc": 12,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/swiglu_pair.comp",
+   "type": "file",
+   "label": "shaders/swiglu_pair.comp",
+   "lang": "glsl",
+   "loc": 12,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/vadd.comp",
+   "type": "file",
+   "label": "shaders/vadd.comp",
+   "lang": "glsl",
+   "loc": 10,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:src/adaptive.zig",
+   "type": "file",
+   "label": "src/adaptive.zig",
+   "lang": "zig",
+   "loc": 88,
+   "owner": "growth"
+  },
+  {
+   "id": "file:src/appendix.zig",
+   "type": "file",
+   "label": "src/appendix.zig",
+   "lang": "zig",
+   "loc": 275,
+   "owner": "appendix-lineage"
+  },
+  {
+   "id": "file:src/arrays.zig",
+   "type": "file",
+   "label": "src/arrays.zig",
+   "lang": "zig",
+   "loc": 352,
+   "owner": "format-core"
+  },
+  {
+   "id": "file:src/buf.zig",
+   "type": "file",
+   "label": "src/buf.zig",
+   "lang": "zig",
+   "loc": 114,
+   "owner": "format-core"
+  },
+  {
+   "id": "file:src/c_api.zig",
+   "type": "file",
+   "label": "src/c_api.zig",
+   "lang": "zig",
+   "loc": 1879,
+   "owner": "c-abi"
+  },
+  {
+   "id": "file:src/chat.zig",
+   "type": "file",
+   "label": "src/chat.zig",
+   "lang": "zig",
+   "loc": 5,
+   "owner": "tokenizer"
+  },
+  {
+   "id": "file:src/chat/jinja.zig",
+   "type": "file",
+   "label": "src/chat/jinja.zig",
+   "lang": "zig",
+   "loc": 2133,
+   "owner": "tokenizer"
+  },
+  {
+   "id": "file:src/chat/template.zig",
+   "type": "file",
+   "label": "src/chat/template.zig",
+   "lang": "zig",
+   "loc": 94,
+   "owner": "tokenizer"
+  },
+  {
+   "id": "file:src/context.zig",
+   "type": "file",
+   "label": "src/context.zig",
+   "lang": "zig",
+   "loc": 63,
+   "owner": "c-abi"
+  },
+  {
+   "id": "file:src/convert.zig",
+   "type": "file",
+   "label": "src/convert.zig",
+   "lang": "zig",
+   "loc": 7,
+   "owner": "converters"
+  },
+  {
+   "id": "file:src/convert/gguf.zig",
+   "type": "file",
+   "label": "src/convert/gguf.zig",
+   "lang": "zig",
+   "loc": 408,
+   "owner": "converters"
+  },
+  {
+   "id": "file:src/convert/hf.zig",
+   "type": "file",
+   "label": "src/convert/hf.zig",
+   "lang": "zig",
+   "loc": 565,
+   "owner": "converters"
+  },
+  {
+   "id": "file:src/convert/hf_tokenizer.zig",
+   "type": "file",
+   "label": "src/convert/hf_tokenizer.zig",
+   "lang": "zig",
+   "loc": 530,
+   "owner": "converters"
+  },
+  {
+   "id": "file:src/convert/safetensors_out.zig",
+   "type": "file",
+   "label": "src/convert/safetensors_out.zig",
+   "lang": "zig",
+   "loc": 100,
+   "owner": "converters"
+  },
+  {
+   "id": "file:src/convert/source.zig",
+   "type": "file",
+   "label": "src/convert/source.zig",
+   "lang": "zig",
+   "loc": 150,
+   "owner": "converters"
+  },
+  {
+   "id": "file:src/convert/stream_writer.zig",
+   "type": "file",
+   "label": "src/convert/stream_writer.zig",
+   "lang": "zig",
+   "loc": 193,
+   "owner": "converters"
+  },
+  {
+   "id": "file:src/cores.zig",
+   "type": "file",
+   "label": "src/cores.zig",
+   "lang": "zig",
+   "loc": 133,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/cuda.zig",
+   "type": "file",
+   "label": "src/cuda.zig",
+   "lang": "zig",
+   "loc": 952,
+   "owner": "backend-cuda-standalone"
+  },
+  {
+   "id": "file:src/cuda/hk_cuda.cu",
+   "type": "file",
+   "label": "src/cuda/hk_cuda.cu",
+   "lang": "cuda",
+   "loc": 665,
+   "owner": "backend-cuda-standalone"
+  },
+  {
+   "id": "file:src/cuda/hk_kernels.cu",
+   "type": "file",
+   "label": "src/cuda/hk_kernels.cu",
+   "lang": "cuda",
+   "loc": 404,
+   "owner": "backend-cuda-standalone"
+  },
+  {
+   "id": "file:src/engine.zig",
+   "type": "file",
+   "label": "src/engine.zig",
+   "lang": "zig",
+   "loc": 15,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/engine/attention.zig",
+   "type": "file",
+   "label": "src/engine/attention.zig",
+   "lang": "zig",
+   "loc": 234,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/engine/attention_kernel.zig",
+   "type": "file",
+   "label": "src/engine/attention_kernel.zig",
+   "lang": "zig",
+   "loc": 281,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/engine/config.zig",
+   "type": "file",
+   "label": "src/engine/config.zig",
+   "lang": "zig",
+   "loc": 315,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/engine/kv.zig",
+   "type": "file",
+   "label": "src/engine/kv.zig",
+   "lang": "zig",
+   "loc": 143,
+   "owner": "kv-cache"
+  },
+  {
+   "id": "file:src/engine/matmul.zig",
+   "type": "file",
+   "label": "src/engine/matmul.zig",
+   "lang": "zig",
+   "loc": 198,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/engine/model.zig",
+   "type": "file",
+   "label": "src/engine/model.zig",
+   "lang": "zig",
+   "loc": 515,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/engine/ops.zig",
+   "type": "file",
+   "label": "src/engine/ops.zig",
+   "lang": "zig",
+   "loc": 340,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/engine/session.zig",
+   "type": "file",
+   "label": "src/engine/session.zig",
+   "lang": "zig",
+   "loc": 92,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/engine/weights.zig",
+   "type": "file",
+   "label": "src/engine/weights.zig",
+   "lang": "zig",
+   "loc": 245,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/expansion.zig",
+   "type": "file",
+   "label": "src/expansion.zig",
+   "lang": "zig",
+   "loc": 57,
+   "owner": "growth"
+  },
+  {
+   "id": "file:src/format.zig",
+   "type": "file",
+   "label": "src/format.zig",
+   "lang": "zig",
+   "loc": 248,
+   "owner": "format-core"
+  },
+  {
+   "id": "file:src/gguf.zig",
+   "type": "file",
+   "label": "src/gguf.zig",
+   "lang": "zig",
+   "loc": 608,
+   "owner": "converters"
+  },
+  {
+   "id": "file:src/growth.zig",
+   "type": "file",
+   "label": "src/growth.zig",
+   "lang": "zig",
+   "loc": 343,
+   "owner": "growth"
+  },
+  {
+   "id": "file:src/hf_mapper.zig",
+   "type": "file",
+   "label": "src/hf_mapper.zig",
+   "lang": "zig",
+   "loc": 357,
+   "owner": "converters"
+  },
+  {
+   "id": "file:src/hub.zig",
+   "type": "file",
+   "label": "src/hub.zig",
+   "lang": "zig",
+   "loc": 4,
+   "owner": "hub-pull"
+  },
+  {
+   "id": "file:src/hub/hf.zig",
+   "type": "file",
+   "label": "src/hub/hf.zig",
+   "lang": "zig",
+   "loc": 304,
+   "owner": "hub-pull"
+  },
+  {
+   "id": "file:src/hub/http.zig",
+   "type": "file",
+   "label": "src/hub/http.zig",
+   "lang": "zig",
+   "loc": 399,
+   "owner": "hub-pull"
+  },
+  {
+   "id": "file:src/hub/pull.zig",
+   "type": "file",
+   "label": "src/hub/pull.zig",
+   "lang": "zig",
+   "loc": 422,
+   "owner": "hub-pull"
+  },
+  {
+   "id": "file:src/integrity.zig",
+   "type": "file",
+   "label": "src/integrity.zig",
+   "lang": "zig",
+   "loc": 77,
+   "owner": "integrity"
+  },
+  {
+   "id": "file:src/kernels.zig",
+   "type": "file",
+   "label": "src/kernels.zig",
+   "lang": "zig",
+   "loc": 106,
+   "owner": "kernels-engine"
+  },
+  {
+   "id": "file:src/kernels/api.zig",
+   "type": "file",
+   "label": "src/kernels/api.zig",
+   "lang": "zig",
+   "loc": 68,
+   "owner": "kernels-engine"
+  },
+  {
+   "id": "file:src/kernels/variants.zig",
+   "type": "file",
+   "label": "src/kernels/variants.zig",
+   "lang": "zig",
+   "loc": 74,
+   "owner": "kernels-engine"
+  },
+  {
+   "id": "file:src/kernels_impl.zig",
+   "type": "file",
+   "label": "src/kernels_impl.zig",
+   "lang": "zig",
+   "loc": 88,
+   "owner": "kernels-engine"
+  },
+  {
+   "id": "file:src/main.zig",
+   "type": "file",
+   "label": "src/main.zig",
+   "lang": "zig",
+   "loc": 71,
+   "owner": "cli"
+  },
+  {
+   "id": "file:src/metadata.zig",
+   "type": "file",
+   "label": "src/metadata.zig",
+   "lang": "zig",
+   "loc": 446,
+   "owner": "format-core"
+  },
+  {
+   "id": "file:src/nf4.zig",
+   "type": "file",
+   "label": "src/nf4.zig",
+   "lang": "zig",
+   "loc": 111,
+   "owner": "nf4-dq"
+  },
+  {
+   "id": "file:src/pipeline.zig",
+   "type": "file",
+   "label": "src/pipeline.zig",
+   "lang": "zig",
+   "loc": 52,
+   "owner": "c-abi"
+  },
+  {
+   "id": "file:src/platform.zig",
+   "type": "file",
+   "label": "src/platform.zig",
+   "lang": "zig",
+   "loc": 432,
+   "owner": "platform-mmap"
+  },
+  {
+   "id": "file:src/pool.zig",
+   "type": "file",
+   "label": "src/pool.zig",
+   "lang": "zig",
+   "loc": 265,
+   "owner": "engine"
+  },
+  {
+   "id": "file:src/quant.zig",
+   "type": "file",
+   "label": "src/quant.zig",
+   "lang": "zig",
+   "loc": 12,
+   "owner": "quant-formats"
+  },
+  {
+   "id": "file:src/quant/blocks.zig",
+   "type": "file",
+   "label": "src/quant/blocks.zig",
+   "lang": "zig",
+   "loc": 135,
+   "owner": "quant-formats"
+  },
+  {
+   "id": "file:src/quant/dequant.zig",
+   "type": "file",
+   "label": "src/quant/dequant.zig",
+   "lang": "zig",
+   "loc": 602,
+   "owner": "quant-formats"
+  },
+  {
+   "id": "file:src/quant/gemm.zig",
+   "type": "file",
+   "label": "src/quant/gemm.zig",
+   "lang": "zig",
+   "loc": 521,
+   "owner": "quant-formats"
+  },
+  {
+   "id": "file:src/quant/isa.zig",
+   "type": "file",
+   "label": "src/quant/isa.zig",
+   "lang": "zig",
+   "loc": 275,
+   "owner": "quant-formats"
+  },
+  {
+   "id": "file:src/quant/tables.zig",
+   "type": "file",
+   "label": "src/quant/tables.zig",
+   "lang": "zig",
+   "loc": 21,
+   "owner": "quant-formats"
+  },
+  {
+   "id": "file:src/quant/unpack.zig",
+   "type": "file",
+   "label": "src/quant/unpack.zig",
+   "lang": "zig",
+   "loc": 447,
+   "owner": "quant-formats"
+  },
+  {
+   "id": "file:src/quant/vecdot.zig",
+   "type": "file",
+   "label": "src/quant/vecdot.zig",
+   "lang": "zig",
+   "loc": 780,
+   "owner": "quant-formats"
+  },
+  {
+   "id": "file:src/quantization.zig",
+   "type": "file",
+   "label": "src/quantization.zig",
+   "lang": "zig",
+   "loc": 1224,
+   "owner": "kernels-legacy"
+  },
+  {
+   "id": "file:src/reader.zig",
+   "type": "file",
+   "label": "src/reader.zig",
+   "lang": "zig",
+   "loc": 637,
+   "owner": "format-core"
+  },
+  {
+   "id": "file:src/root.zig",
+   "type": "file",
+   "label": "src/root.zig",
+   "lang": "zig",
+   "loc": 80,
+   "owner": "c-abi"
+  },
+  {
+   "id": "file:src/safetensors.zig",
+   "type": "file",
+   "label": "src/safetensors.zig",
+   "lang": "zig",
+   "loc": 220,
+   "owner": "converters"
+  },
+  {
+   "id": "file:src/sampler.zig",
+   "type": "file",
+   "label": "src/sampler.zig",
+   "lang": "zig",
+   "loc": 299,
+   "owner": "sampler"
+  },
+  {
+   "id": "file:src/sandbox.zig",
+   "type": "file",
+   "label": "src/sandbox.zig",
+   "lang": "zig",
+   "loc": 89,
+   "owner": "code-sandbox"
+  },
+  {
+   "id": "file:src/server.zig",
+   "type": "file",
+   "label": "src/server.zig",
+   "lang": "zig",
+   "loc": 6,
+   "owner": "server"
+  },
+  {
+   "id": "file:src/server/api.zig",
+   "type": "file",
+   "label": "src/server/api.zig",
+   "lang": "zig",
+   "loc": 742,
+   "owner": "server"
+  },
+  {
+   "id": "file:src/server/scheduler.zig",
+   "type": "file",
+   "label": "src/server/scheduler.zig",
+   "lang": "zig",
+   "loc": 469,
+   "owner": "server"
+  },
+  {
+   "id": "file:src/sparsity.zig",
+   "type": "file",
+   "label": "src/sparsity.zig",
+   "lang": "zig",
+   "loc": 261,
+   "owner": "sparsity-storage"
+  },
+  {
+   "id": "file:src/tensor_ops.zig",
+   "type": "file",
+   "label": "src/tensor_ops.zig",
+   "lang": "zig",
+   "loc": 1245,
+   "owner": "kernels-legacy"
+  },
+  {
+   "id": "file:src/tensor_toc.zig",
+   "type": "file",
+   "label": "src/tensor_toc.zig",
+   "lang": "zig",
+   "loc": 120,
+   "owner": "format-core"
+  },
+  {
+   "id": "file:src/tiling.zig",
+   "type": "file",
+   "label": "src/tiling.zig",
+   "lang": "zig",
+   "loc": 109,
+   "owner": "sparsity-storage"
+  },
+  {
+   "id": "file:src/tokenizer.zig",
+   "type": "file",
+   "label": "src/tokenizer.zig",
+   "lang": "zig",
+   "loc": 1075,
+   "owner": "tokenizer"
+  },
+  {
+   "id": "file:src/tokenizer/pretok.zig",
+   "type": "file",
+   "label": "src/tokenizer/pretok.zig",
+   "lang": "zig",
+   "loc": 226,
+   "owner": "tokenizer"
+  },
+  {
+   "id": "file:src/tokenizer/regex.zig",
+   "type": "file",
+   "label": "src/tokenizer/regex.zig",
+   "lang": "zig",
+   "loc": 764,
+   "owner": "tokenizer"
+  },
+  {
+   "id": "file:src/tokenizer/unicode.zig",
+   "type": "file",
+   "label": "src/tokenizer/unicode.zig",
+   "lang": "zig",
+   "loc": 134,
+   "owner": "tokenizer"
+  },
+  {
+   "id": "file:src/transaction.zig",
+   "type": "file",
+   "label": "src/transaction.zig",
+   "lang": "zig",
+   "loc": 89,
+   "owner": "transaction"
+  },
+  {
+   "id": "file:src/vk/c.zig",
+   "type": "file",
+   "label": "src/vk/c.zig",
+   "lang": "zig",
+   "loc": 923,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:src/vk/engine.zig",
+   "type": "file",
+   "label": "src/vk/engine.zig",
+   "lang": "zig",
+   "loc": 780,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:src/vk/vk.zig",
+   "type": "file",
+   "label": "src/vk/vk.zig",
+   "lang": "zig",
+   "loc": 728,
+   "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:src/writer.zig",
+   "type": "file",
+   "label": "src/writer.zig",
+   "lang": "zig",
+   "loc": 293,
+   "owner": "format-core"
+  },
+  {
+   "id": "file:tests/bench_kernels.zig",
+   "type": "file",
+   "label": "tests/bench_kernels.zig",
+   "lang": "zig",
+   "loc": 157,
+   "owner": "bench-tools"
+  },
+  {
+   "id": "file:tests/cli_tests.zig",
+   "type": "file",
+   "label": "tests/cli_tests.zig",
+   "lang": "zig",
+   "loc": 186,
+   "owner": "cli"
+  },
+  {
+   "id": "file:tests/conftest.py",
+   "type": "file",
+   "label": "tests/conftest.py",
+   "lang": "python",
+   "loc": 22,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/hub_tests.zig",
+   "type": "file",
+   "label": "tests/hub_tests.zig",
+   "lang": "zig",
+   "loc": 434,
+   "owner": "hub-pull"
+  },
+  {
+   "id": "file:tests/roundtrip_tests.zig",
+   "type": "file",
+   "label": "tests/roundtrip_tests.zig",
+   "lang": "zig",
+   "loc": 1552,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/server_tests.zig",
+   "type": "file",
+   "label": "tests/server_tests.zig",
+   "lang": "zig",
+   "loc": 371,
+   "owner": "server"
+  },
+  {
+   "id": "file:tests/support/http.zig",
+   "type": "file",
+   "label": "tests/support/http.zig",
+   "lang": "zig",
+   "loc": 135,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/support/mock_hub.zig",
+   "type": "file",
+   "label": "tests/support/mock_hub.zig",
+   "lang": "zig",
+   "loc": 286,
+   "owner": "hub-pull"
+  },
+  {
+   "id": "file:tests/support/proc.zig",
+   "type": "file",
+   "label": "tests/support/proc.zig",
+   "lang": "zig",
+   "loc": 86,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/support/tiny_model.zig",
+   "type": "file",
+   "label": "tests/support/tiny_model.zig",
+   "lang": "zig",
+   "loc": 348,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_adaptive.py",
+   "type": "file",
+   "label": "tests/test_adaptive.py",
+   "lang": "python",
+   "loc": 720,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_bench_compare.zig",
+   "type": "file",
+   "label": "tests/test_bench_compare.zig",
+   "lang": "zig",
+   "loc": 286,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_cuda.zig",
+   "type": "file",
+   "label": "tests/test_cuda.zig",
+   "lang": "zig",
+   "loc": 265,
+   "owner": "backend-cuda-standalone"
+  },
+  {
+   "id": "file:tests/test_dynamic_offload.py",
+   "type": "file",
+   "label": "tests/test_dynamic_offload.py",
+   "lang": "python",
+   "loc": 216,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_engine.zig",
+   "type": "file",
+   "label": "tests/test_engine.zig",
+   "lang": "zig",
+   "loc": 244,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_expanded_features.py",
+   "type": "file",
+   "label": "tests/test_expanded_features.py",
+   "lang": "python",
+   "loc": 342,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_expansion_rigorous.py",
+   "type": "file",
+   "label": "tests/test_expansion_rigorous.py",
+   "lang": "python",
+   "loc": 295,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_gguf_hf_parity.py",
+   "type": "file",
+   "label": "tests/test_gguf_hf_parity.py",
+   "lang": "python",
+   "loc": 468,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_gpu.zig",
+   "type": "file",
+   "label": "tests/test_gpu.zig",
+   "lang": "zig",
+   "loc": 89,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_hf_style.py",
+   "type": "file",
+   "label": "tests/test_hf_style.py",
+   "lang": "python",
+   "loc": 522,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_native_abi.py",
+   "type": "file",
+   "label": "tests/test_native_abi.py",
+   "lang": "python",
+   "loc": 94,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_native_engine.py",
+   "type": "file",
+   "label": "tests/test_native_engine.py",
+   "lang": "python",
+   "loc": 173,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_new_features.py",
+   "type": "file",
+   "label": "tests/test_new_features.py",
+   "lang": "python",
+   "loc": 392,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_openai_compat.py",
+   "type": "file",
+   "label": "tests/test_openai_compat.py",
+   "lang": "python",
+   "loc": 57,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_parity_pillars.py",
+   "type": "file",
+   "label": "tests/test_parity_pillars.py",
+   "lang": "python",
+   "loc": 208,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_quant.zig",
+   "type": "file",
+   "label": "tests/test_quant.zig",
+   "lang": "zig",
+   "loc": 484,
+   "owner": "quant-formats"
+  },
+  {
+   "id": "file:tests/test_raw_weights.py",
+   "type": "file",
+   "label": "tests/test_raw_weights.py",
+   "lang": "python",
+   "loc": 208,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_self_training_pipeline.py",
+   "type": "file",
+   "label": "tests/test_self_training_pipeline.py",
+   "lang": "python",
+   "loc": 267,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_torch_integration.py",
+   "type": "file",
+   "label": "tests/test_torch_integration.py",
+   "lang": "python",
+   "loc": 235,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/test_universal_pipeline.py",
+   "type": "file",
+   "label": "tests/test_universal_pipeline.py",
+   "lang": "python",
+   "loc": 199,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/tiny_model_tool.zig",
+   "type": "file",
+   "label": "tests/tiny_model_tool.zig",
+   "lang": "zig",
+   "loc": 18,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tools/cli_hub.zig",
+   "type": "file",
+   "label": "tools/cli_hub.zig",
+   "lang": "zig",
+   "loc": 247,
+   "owner": "hub-pull"
+  },
+  {
+   "id": "file:tools/gen_quant_fixtures.py",
+   "type": "file",
+   "label": "tools/gen_quant_fixtures.py",
+   "lang": "python",
+   "loc": 69,
+   "owner": "dev-tools"
+  },
+  {
+   "id": "file:tools/gen_quant_tables.py",
+   "type": "file",
+   "label": "tools/gen_quant_tables.py",
+   "lang": "python",
+   "loc": 42,
+   "owner": "dev-tools"
+  },
+  {
+   "id": "file:tools/gen_unicode_tables.zig",
+   "type": "file",
+   "label": "tools/gen_unicode_tables.zig",
+   "lang": "zig",
+   "loc": 104,
+   "owner": "dev-tools"
+  },
+  {
+   "id": "file:tools/hf_space_app.py",
+   "type": "file",
+   "label": "tools/hf_space_app.py",
+   "lang": "python",
+   "loc": 734,
+   "owner": "dev-tools"
+  },
+  {
+   "id": "file:tools/hk_cli.zig",
+   "type": "file",
+   "label": "tools/hk_cli.zig",
+   "lang": "zig",
+   "loc": 2064,
+   "owner": "cli"
+  },
+  {
+   "id": "file:tools/hk_compare.zig",
+   "type": "file",
+   "label": "tools/hk_compare.zig",
+   "lang": "zig",
+   "loc": 345,
+   "owner": "bench-tools"
+  },
+  {
+   "id": "file:tools/hk_editor_gui.py",
+   "type": "file",
+   "label": "tools/hk_editor_gui.py",
+   "lang": "python",
+   "loc": 665,
+   "owner": "gui"
+  },
+  {
+   "id": "file:tools/hk_gpu_bench.zig",
+   "type": "file",
+   "label": "tools/hk_gpu_bench.zig",
+   "lang": "zig",
+   "loc": 216,
+   "owner": "backend-cuda-standalone"
+  },
+  {
+   "id": "file:tools/hk_probe.zig",
+   "type": "file",
+   "label": "tools/hk_probe.zig",
+   "lang": "zig",
+   "loc": 333,
+   "owner": "bench-tools"
+  },
+  {
+   "id": "file:tools/vk/extract.py",
+   "type": "file",
+   "label": "tools/vk/extract.py",
+   "lang": "python",
+   "loc": 47,
+   "owner": "dev-tools"
+  }
+ ],
+ "edges": [
+  {
+   "s": "hk",
+   "t": "container",
+   "type": "contains"
+  },
+  {
+   "s": "hk",
+   "t": "runtime",
+   "type": "contains"
+  },
+  {
+   "s": "hk",
+   "t": "research",
+   "type": "contains"
+  },
+  {
+   "s": "hk",
+   "t": "tooling",
+   "type": "contains"
+  },
+  {
+   "s": "container",
+   "t": "format-core",
+   "type": "contains"
+  },
+  {
+   "s": "container",
+   "t": "integrity",
+   "type": "contains"
+  },
+  {
+   "s": "container",
+   "t": "transaction",
+   "type": "contains"
+  },
+  {
+   "s": "container",
+   "t": "appendix-lineage",
+   "type": "contains"
+  },
+  {
+   "s": "container",
+   "t": "platform-mmap",
+   "type": "contains"
+  },
+  {
+   "s": "container",
+   "t": "quant-formats",
+   "type": "contains"
+  },
+  {
+   "s": "container",
+   "t": "sparsity-storage",
+   "type": "contains"
+  },
+  {
+   "s": "container",
+   "t": "nf4-dq",
+   "type": "contains"
+  },
+  {
+   "s": "runtime",
+   "t": "engine",
+   "type": "contains"
+  },
+  {
+   "s": "runtime",
+   "t": "kernels-engine",
+   "type": "contains"
+  },
+  {
+   "s": "runtime",
+   "t": "kernels-legacy",
+   "type": "contains"
+  },
+  {
+   "s": "runtime",
+   "t": "kv-cache",
+   "type": "contains"
+  },
+  {
+   "s": "runtime",
+   "t": "sampler",
+   "type": "contains"
+  },
+  {
+   "s": "runtime",
+   "t": "tokenizer",
+   "type": "contains"
+  },
+  {
+   "s": "runtime",
+   "t": "backend-vulkan",
+   "type": "contains"
+  },
+  {
+   "s": "runtime",
+   "t": "backend-cuda-standalone",
+   "type": "contains"
+  },
+  {
+   "s": "runtime",
+   "t": "server",
+   "type": "contains"
+  },
+  {
+   "s": "runtime",
+   "t": "c-abi",
+   "type": "contains"
+  },
+  {
+   "s": "research",
+   "t": "growth",
+   "type": "contains"
+  },
+  {
+   "s": "research",
+   "t": "pruning",
+   "type": "contains"
+  },
+  {
+   "s": "research",
+   "t": "trainer",
+   "type": "contains"
+  },
+  {
+   "s": "research",
+   "t": "self-training",
+   "type": "contains"
+  },
+  {
+   "s": "research",
+   "t": "code-sandbox",
+   "type": "contains"
+  },
+  {
+   "s": "research",
+   "t": "nf4-dq",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "hub-pull",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "converters",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "cli",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "bench-tools",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "bindings",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "python-sdk",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "architecture-registry",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "gui",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "ci",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "docs-wiki",
+   "type": "contains"
+  },
+  {
+   "s": "engine",
+   "t": "kernels-engine",
+   "type": "depends_on"
+  },
+  {
+   "s": "engine",
+   "t": "quant-formats",
+   "type": "depends_on"
+  },
+  {
+   "s": "engine",
+   "t": "kv-cache",
+   "type": "depends_on"
+  },
+  {
+   "s": "engine",
+   "t": "format-core",
+   "type": "depends_on"
+  },
+  {
+   "s": "engine",
+   "t": "backend-vulkan",
+   "type": "depends_on"
+  },
+  {
+   "s": "engine",
+   "t": "platform-mmap",
+   "type": "depends_on"
+  },
+  {
+   "s": "server",
+   "t": "engine",
+   "type": "depends_on"
+  },
+  {
+   "s": "server",
+   "t": "sampler",
+   "type": "depends_on"
+  },
+  {
+   "s": "server",
+   "t": "tokenizer",
+   "type": "depends_on"
+  },
+  {
+   "s": "cli",
+   "t": "engine",
+   "type": "depends_on"
+  },
+  {
+   "s": "cli",
+   "t": "hub-pull",
+   "type": "depends_on"
+  },
+  {
+   "s": "cli",
+   "t": "converters",
+   "type": "depends_on"
+  },
+  {
+   "s": "cli",
+   "t": "appendix-lineage",
+   "type": "depends_on"
+  },
+  {
+   "s": "cli",
+   "t": "integrity",
+   "type": "depends_on"
+  },
+  {
+   "s": "hub-pull",
+   "t": "converters",
+   "type": "depends_on"
+  },
+  {
+   "s": "converters",
+   "t": "format-core",
+   "type": "depends_on"
+  },
+  {
+   "s": "converters",
+   "t": "quant-formats",
+   "type": "depends_on"
+  },
+  {
+   "s": "format-core",
+   "t": "platform-mmap",
+   "type": "depends_on"
+  },
+  {
+   "s": "integrity",
+   "t": "format-core",
+   "type": "depends_on"
+  },
+  {
+   "s": "integrity",
+   "t": "platform-mmap",
+   "type": "depends_on"
+  },
+  {
+   "s": "transaction",
+   "t": "integrity",
+   "type": "depends_on"
+  },
+  {
+   "s": "transaction",
+   "t": "format-core",
+   "type": "depends_on"
+  },
+  {
+   "s": "appendix-lineage",
+   "t": "integrity",
+   "type": "depends_on"
+  },
+  {
+   "s": "c-abi",
+   "t": "kernels-legacy",
+   "type": "depends_on"
+  },
+  {
+   "s": "c-abi",
+   "t": "format-core",
+   "type": "depends_on"
+  },
+  {
+   "s": "c-abi",
+   "t": "engine",
+   "type": "depends_on"
+  },
+  {
+   "s": "bindings",
+   "t": "c-abi",
+   "type": "depends_on"
+  },
+  {
+   "s": "python-sdk",
+   "t": "c-abi",
+   "type": "depends_on"
+  },
+  {
+   "s": "architecture-registry",
+   "t": "converters",
+   "type": "depends_on"
+  },
+  {
+   "s": "growth",
+   "t": "format-core",
+   "type": "depends_on"
+  },
+  {
+   "s": "growth",
+   "t": "python-sdk",
+   "type": "depends_on"
+  },
+  {
+   "s": "trainer",
+   "t": "python-sdk",
+   "type": "depends_on"
+  },
+  {
+   "s": "self-training",
+   "t": "trainer",
+   "type": "depends_on"
+  },
+  {
+   "s": "self-training",
+   "t": "code-sandbox",
+   "type": "depends_on"
+  },
+  {
+   "s": "self-training",
+   "t": "appendix-lineage",
+   "type": "depends_on"
+  },
+  {
+   "s": "pruning",
+   "t": "sparsity-storage",
+   "type": "depends_on"
+  },
+  {
+   "s": "backend-cuda-standalone",
+   "t": "kernels-legacy",
+   "type": "supersedes",
+   "note": "Independent code path; shares nothing at runtime."
+  },
+  {
+   "s": "backend-abstraction",
+   "t": "engine",
+   "type": "blocked_by"
+  },
+  {
+   "s": "op-capability-table",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "graph-ir",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "memory-planner",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "backend-cuda-engine",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "backend-cuda-engine",
+   "t": "backend-cuda-standalone",
+   "type": "depends_on"
+  },
+  {
+   "s": "backend-metal",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "backend-rocm",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "backend-npu",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "backend-directml-xpu",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "mobile-runtime",
+   "t": "backend-npu",
+   "type": "blocked_by"
+  },
+  {
+   "s": "mobile-runtime",
+   "t": "c-abi",
+   "type": "depends_on"
+  },
+  {
+   "s": "wasm-webgpu",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "arch-descriptor",
+   "t": "engine",
+   "type": "blocked_by"
+  },
+  {
+   "s": "moe-ssm-multimodal",
+   "t": "arch-descriptor",
+   "type": "blocked_by"
+  },
+  {
+   "s": "continuous-batching",
+   "t": "kv-cache",
+   "type": "blocked_by"
+  },
+  {
+   "s": "continuous-batching",
+   "t": "server",
+   "type": "blocked_by"
+  },
+  {
+   "s": "speculative-grammar",
+   "t": "sampler",
+   "type": "blocked_by"
+  },
+  {
+   "s": "speculative-grammar",
+   "t": "continuous-batching",
+   "type": "blocked_by"
+  },
+  {
+   "s": "sparse-execution",
+   "t": "sparsity-storage",
+   "type": "blocked_by"
+  },
+  {
+   "s": "sparse-execution",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "dual-mode-runtime",
+   "t": "nf4-dq",
+   "type": "blocked_by"
+  },
+  {
+   "s": "dual-mode-runtime",
+   "t": "engine",
+   "type": "blocked_by"
+  },
+  {
+   "s": "signatures-registry",
+   "t": "integrity",
+   "type": "blocked_by"
+  },
+  {
+   "s": "lineage-vcs",
+   "t": "appendix-lineage",
+   "type": "blocked_by"
+  },
+  {
+   "s": "lineage-vcs",
+   "t": "signatures-registry",
+   "type": "blocked_by"
+  },
+  {
+   "s": "distributed",
+   "t": "memory-planner",
+   "type": "blocked_by"
+  },
+  {
+   "s": "distributed",
+   "t": "continuous-batching",
+   "type": "blocked_by"
+  },
+  {
+   "s": "profiling-autotune",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "fuzzing",
+   "t": "format-core",
+   "type": "blocked_by"
+  },
+  {
+   "s": "model-evolution",
+   "t": "self-training",
+   "type": "blocked_by"
+  },
+  {
+   "s": "model-evolution",
+   "t": "growth",
+   "type": "blocked_by"
+  },
+  {
+   "s": "model-evolution",
+   "t": "lineage-vcs",
+   "type": "blocked_by"
+  },
+  {
+   "s": "extension-system",
+   "t": "backend-abstraction",
+   "type": "blocked_by"
+  },
+  {
+   "s": "extension-system",
+   "t": "c-abi",
+   "type": "blocked_by"
+  },
+  {
+   "s": "ms-2.0",
+   "t": "backend-abstraction",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.0",
+   "t": "backend-cuda-engine",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.0",
+   "t": "memory-planner",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.0",
+   "t": "backend-vulkan",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.1",
+   "t": "backend-cuda-engine",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.1",
+   "t": "sparse-execution",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.1",
+   "t": "backend-rocm",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.1",
+   "t": "backend-metal",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.1",
+   "t": "backend-directml-xpu",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.2",
+   "t": "arch-descriptor",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.2",
+   "t": "moe-ssm-multimodal",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.3",
+   "t": "continuous-batching",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.3",
+   "t": "speculative-grammar",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.3",
+   "t": "distributed",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.4",
+   "t": "integrity",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.4",
+   "t": "transaction",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.4",
+   "t": "signatures-registry",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.5",
+   "t": "trainer",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.5",
+   "t": "pruning",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.5",
+   "t": "dual-mode-runtime",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.6",
+   "t": "growth",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.6",
+   "t": "lineage-vcs",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.6",
+   "t": "model-evolution",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.7",
+   "t": "self-training",
+   "type": "requires"
+  },
+  {
+   "s": "ms-2.7",
+   "t": "code-sandbox",
+   "type": "requires"
+  },
+  {
+   "s": "ms-3.0",
+   "t": "mobile-runtime",
+   "type": "requires"
+  },
+  {
+   "s": "ms-3.0",
+   "t": "wasm-webgpu",
+   "type": "requires"
+  },
+  {
+   "s": "ms-3.0",
+   "t": "backend-npu",
+   "type": "requires"
+  },
+  {
+   "s": "ms-3.0",
+   "t": "ms-2.0",
+   "type": "requires"
+  },
+  {
+   "s": "ms-3.0",
+   "t": "ms-2.1",
+   "type": "requires"
+  },
+  {
+   "s": "ms-3.0",
+   "t": "ms-2.2",
+   "type": "requires"
+  },
+  {
+   "s": "ms-3.0",
+   "t": "ms-2.3",
+   "type": "requires"
+  },
+  {
+   "s": "rule-memory",
+   "t": "hk",
+   "type": "constrains"
+  },
+  {
+   "s": "rule-robust",
+   "t": "hk",
+   "type": "constrains"
+  },
+  {
+   "s": "rule-truthful-docs",
+   "t": "docs-wiki",
+   "type": "constrains"
+  },
+  {
+   "s": "rule-benchmark",
+   "t": "kernels-engine",
+   "type": "constrains"
+  },
+  {
+   "s": "rule-benchmark",
+   "t": "backend-vulkan",
+   "type": "constrains"
+  },
+  {
+   "s": "rule-hierarchy",
+   "t": "research",
+   "type": "constrains"
+  },
+  {
+   "s": "rule-zig-016",
+   "t": "runtime",
+   "type": "constrains"
+  },
+  {
+   "s": "rule-memory",
+   "t": "integrity",
+   "type": "constrains",
+   "note": "Whole-file re-hash per mutation is O(file) time; open decision in HANDOFF."
+  },
+  {
+   "s": "rule-robust",
+   "t": "code-sandbox",
+   "type": "constrains",
+   "note": "Silent Docker->subprocess fallback violates this and plan \u00a733."
+  },
+  {
+   "s": "tooling",
+   "t": "tests-suite",
+   "type": "contains"
+  },
+  {
+   "s": "tooling",
+   "t": "dev-tools",
+   "type": "contains"
+  },
+  {
+   "s": "format-core",
+   "t": "file:src/arrays.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "format-core",
+   "t": "file:src/buf.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "format-core",
+   "t": "file:src/format.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "format-core",
+   "t": "file:src/metadata.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "format-core",
+   "t": "file:src/reader.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "format-core",
+   "t": "file:src/tensor_toc.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "format-core",
+   "t": "file:src/writer.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "integrity",
+   "t": "file:src/integrity.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "transaction",
+   "t": "file:src/transaction.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "appendix-lineage",
+   "t": "file:python/hk/adaptive/appendix.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "appendix-lineage",
+   "t": "file:src/appendix.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "platform-mmap",
+   "t": "file:src/platform.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "quant-formats",
+   "t": "file:src/quant.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "quant-formats",
+   "t": "file:src/quant/blocks.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "quant-formats",
+   "t": "file:src/quant/dequant.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "quant-formats",
+   "t": "file:src/quant/gemm.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "quant-formats",
+   "t": "file:src/quant/isa.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "quant-formats",
+   "t": "file:src/quant/tables.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "quant-formats",
+   "t": "file:src/quant/unpack.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "quant-formats",
+   "t": "file:src/quant/vecdot.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "quant-formats",
+   "t": "file:tests/test_quant.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "sparsity-storage",
+   "t": "file:src/sparsity.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "sparsity-storage",
+   "t": "file:src/tiling.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "nf4-dq",
+   "t": "file:python/hk/quantization.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "nf4-dq",
+   "t": "file:src/nf4.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/cores.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/engine.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/engine/attention.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/engine/attention_kernel.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/engine/config.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/engine/matmul.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/engine/model.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/engine/ops.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/engine/session.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/engine/weights.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "engine",
+   "t": "file:src/pool.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "kernels-engine",
+   "t": "file:src/kernels.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "kernels-engine",
+   "t": "file:src/kernels/api.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "kernels-engine",
+   "t": "file:src/kernels/variants.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "kernels-engine",
+   "t": "file:src/kernels_impl.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "kernels-legacy",
+   "t": "file:src/quantization.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "kernels-legacy",
+   "t": "file:src/tensor_ops.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "kv-cache",
+   "t": "file:src/engine/kv.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "sampler",
+   "t": "file:src/sampler.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tokenizer",
+   "t": "file:src/chat.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tokenizer",
+   "t": "file:src/chat/jinja.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tokenizer",
+   "t": "file:src/chat/template.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tokenizer",
+   "t": "file:src/tokenizer.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tokenizer",
+   "t": "file:src/tokenizer/pretok.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tokenizer",
+   "t": "file:src/tokenizer/regex.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tokenizer",
+   "t": "file:src/tokenizer/unicode.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/add.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/attention.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/common.glsl",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/embed.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/mm.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/mmv.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/rmsnorm.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/rope_kv.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/swiglu.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/swiglu_pair.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/vadd.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:src/vk/c.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:src/vk/engine.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:src/vk/vk.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-cuda-standalone",
+   "t": "file:src/cuda.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-cuda-standalone",
+   "t": "file:src/cuda/hk_cuda.cu",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-cuda-standalone",
+   "t": "file:src/cuda/hk_kernels.cu",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-cuda-standalone",
+   "t": "file:tests/test_cuda.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-cuda-standalone",
+   "t": "file:tools/hk_gpu_bench.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "server",
+   "t": "file:src/server.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "server",
+   "t": "file:src/server/api.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "server",
+   "t": "file:src/server/scheduler.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "server",
+   "t": "file:tests/server_tests.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "c-abi",
+   "t": "file:src/c_api.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "c-abi",
+   "t": "file:src/context.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "c-abi",
+   "t": "file:src/pipeline.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "c-abi",
+   "t": "file:src/root.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "hub-pull",
+   "t": "file:src/hub.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "hub-pull",
+   "t": "file:src/hub/hf.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "hub-pull",
+   "t": "file:src/hub/http.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "hub-pull",
+   "t": "file:src/hub/pull.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "hub-pull",
+   "t": "file:tests/hub_tests.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "hub-pull",
+   "t": "file:tests/support/mock_hub.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "hub-pull",
+   "t": "file:tools/cli_hub.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "converters",
+   "t": "file:src/convert.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "converters",
+   "t": "file:src/convert/gguf.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "converters",
+   "t": "file:src/convert/hf.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "converters",
+   "t": "file:src/convert/hf_tokenizer.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "converters",
+   "t": "file:src/convert/safetensors_out.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "converters",
+   "t": "file:src/convert/source.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "converters",
+   "t": "file:src/convert/stream_writer.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "converters",
+   "t": "file:src/gguf.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "converters",
+   "t": "file:src/hf_mapper.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "converters",
+   "t": "file:src/safetensors.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "cli",
+   "t": "file:src/main.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "cli",
+   "t": "file:tests/cli_tests.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "cli",
+   "t": "file:tools/hk_cli.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "bench-tools",
+   "t": "file:tests/bench_kernels.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "bench-tools",
+   "t": "file:tools/hk_compare.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "bench-tools",
+   "t": "file:tools/hk_probe.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/__init__.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/adaptive/__init__.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/benchmark.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/cli.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/composite.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/config.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/flax.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/format.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/gguf_parser.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/hf_mapper.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/jax.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/modeling.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/models.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/native.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/numpy.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/offload.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/pipeline.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/raw.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/remote.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/tokenizer.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/torch.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "architecture-registry",
+   "t": "file:python/hk/constants.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "gui",
+   "t": "file:python/hk/gui.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "gui",
+   "t": "file:tools/hk_editor_gui.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "growth",
+   "t": "file:python/hk/adaptive/expansion_evaluator.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "growth",
+   "t": "file:python/hk/adaptive/growth.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "growth",
+   "t": "file:python/hk/adaptive/topology.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "growth",
+   "t": "file:src/adaptive.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "growth",
+   "t": "file:src/expansion.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "growth",
+   "t": "file:src/growth.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "pruning",
+   "t": "file:python/hk/pruning.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "trainer",
+   "t": "file:python/hk/adaptive/self_play.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "trainer",
+   "t": "file:python/hk/trainer.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "self-training",
+   "t": "file:python/hk/adaptive/self_conversation.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "self-training",
+   "t": "file:python/hk/adaptive/self_training.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "code-sandbox",
+   "t": "file:python/hk/adaptive/code_eval.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "code-sandbox",
+   "t": "file:src/sandbox.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/conftest.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/roundtrip_tests.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/support/http.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/support/proc.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/support/tiny_model.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_adaptive.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_bench_compare.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_dynamic_offload.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_engine.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_expanded_features.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_expansion_rigorous.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_gguf_hf_parity.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_gpu.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_hf_style.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_native_abi.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_native_engine.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_new_features.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_openai_compat.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_parity_pillars.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_raw_weights.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_self_training_pipeline.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_torch_integration.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/test_universal_pipeline.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/tiny_model_tool.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "dev-tools",
+   "t": "file:tools/gen_quant_fixtures.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "dev-tools",
+   "t": "file:tools/gen_quant_tables.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "dev-tools",
+   "t": "file:tools/gen_unicode_tables.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "dev-tools",
+   "t": "file:tools/hf_space_app.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "dev-tools",
+   "t": "file:tools/vk/extract.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/adaptive/__init__.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/benchmark.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/composite.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/config.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/flax.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/format.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/gguf_parser.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/gui.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/hf_mapper.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/jax.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/modeling.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/native.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/numpy.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/offload.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/pipeline.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/pruning.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/quantization.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/raw.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/remote.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/tokenizer.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/torch.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/__init__.py",
+   "t": "file:python/hk/trainer.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/__init__.py",
+   "t": "file:python/hk/adaptive/appendix.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/__init__.py",
+   "t": "file:python/hk/adaptive/code_eval.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/__init__.py",
+   "t": "file:python/hk/adaptive/expansion_evaluator.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/__init__.py",
+   "t": "file:python/hk/adaptive/growth.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/__init__.py",
+   "t": "file:python/hk/adaptive/self_conversation.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/__init__.py",
+   "t": "file:python/hk/adaptive/self_play.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/__init__.py",
+   "t": "file:python/hk/adaptive/self_training.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/__init__.py",
+   "t": "file:python/hk/adaptive/topology.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/expansion_evaluator.py",
+   "t": "file:python/hk/adaptive/growth.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/self_conversation.py",
+   "t": "file:python/hk/adaptive/code_eval.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/self_play.py",
+   "t": "file:python/hk/adaptive/appendix.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/self_training.py",
+   "t": "file:python/hk/adaptive/appendix.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/self_training.py",
+   "t": "file:python/hk/adaptive/code_eval.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/self_training.py",
+   "t": "file:python/hk/adaptive/expansion_evaluator.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/self_training.py",
+   "t": "file:python/hk/adaptive/growth.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/self_training.py",
+   "t": "file:python/hk/adaptive/self_conversation.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/topology.py",
+   "t": "file:python/hk/adaptive/appendix.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/adaptive/topology.py",
+   "t": "file:python/hk/torch.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/composite.py",
+   "t": "file:python/hk/config.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/composite.py",
+   "t": "file:python/hk/modeling.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/composite.py",
+   "t": "file:python/hk/tokenizer.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/composite.py",
+   "t": "file:python/hk/torch.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/config.py",
+   "t": "file:python/hk/hf_mapper.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/config.py",
+   "t": "file:python/hk/native.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/flax.py",
+   "t": "file:python/hk/jax.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/gguf_parser.py",
+   "t": "file:python/hk/native.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/hf_mapper.py",
+   "t": "file:python/hk/config.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/hf_mapper.py",
+   "t": "file:python/hk/constants.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/hf_mapper.py",
+   "t": "file:python/hk/models.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/hf_mapper.py",
+   "t": "file:python/hk/native.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/hf_mapper.py",
+   "t": "file:python/hk/torch.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/jax.py",
+   "t": "file:python/hk/numpy.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/modeling.py",
+   "t": "file:python/hk/adaptive/__init__.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/modeling.py",
+   "t": "file:python/hk/config.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/modeling.py",
+   "t": "file:python/hk/format.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/modeling.py",
+   "t": "file:python/hk/native.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/modeling.py",
+   "t": "file:python/hk/offload.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/modeling.py",
+   "t": "file:python/hk/quantization.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/modeling.py",
+   "t": "file:python/hk/torch.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/models.py",
+   "t": "file:python/hk/constants.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/native.py",
+   "t": "file:python/hk/format.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/numpy.py",
+   "t": "file:python/hk/format.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/numpy.py",
+   "t": "file:python/hk/native.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/numpy.py",
+   "t": "file:python/hk/torch.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/offload.py",
+   "t": "file:python/hk/config.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/pipeline.py",
+   "t": "file:python/hk/composite.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/pipeline.py",
+   "t": "file:python/hk/config.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/pipeline.py",
+   "t": "file:python/hk/modeling.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/pipeline.py",
+   "t": "file:python/hk/tokenizer.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/pruning.py",
+   "t": "file:python/hk/quantization.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/quantization.py",
+   "t": "file:python/hk/format.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/quantization.py",
+   "t": "file:python/hk/native.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/raw.py",
+   "t": "file:python/hk/format.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/raw.py",
+   "t": "file:python/hk/native.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/remote.py",
+   "t": "file:python/hk/format.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/remote.py",
+   "t": "file:python/hk/quantization.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/tokenizer.py",
+   "t": "file:python/hk/constants.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/tokenizer.py",
+   "t": "file:python/hk/native.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/tokenizer.py",
+   "t": "file:python/hk/torch.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/torch.py",
+   "t": "file:python/hk/format.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/torch.py",
+   "t": "file:python/hk/native.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/torch.py",
+   "t": "file:python/hk/quantization.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/trainer.py",
+   "t": "file:python/hk/adaptive/appendix.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/trainer.py",
+   "t": "file:python/hk/adaptive/code_eval.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/trainer.py",
+   "t": "file:python/hk/adaptive/self_play.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/trainer.py",
+   "t": "file:python/hk/config.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/trainer.py",
+   "t": "file:python/hk/modeling.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/adaptive.zig",
+   "t": "file:src/growth.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/appendix.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/appendix.zig",
+   "t": "file:src/integrity.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/appendix.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/adaptive.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/appendix.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/context.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/engine.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/gguf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/growth.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/hf_mapper.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/nf4.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/pipeline.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/quantization.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/reader.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/safetensors.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/sampler.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/sparsity.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/tensor_ops.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/tiling.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/tokenizer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/c_api.zig",
+   "t": "file:src/writer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/chat.zig",
+   "t": "file:src/chat/jinja.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/chat.zig",
+   "t": "file:src/chat/template.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/chat/template.zig",
+   "t": "file:src/chat/jinja.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert.zig",
+   "t": "file:src/convert/gguf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert.zig",
+   "t": "file:src/convert/hf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert.zig",
+   "t": "file:src/convert/hf_tokenizer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert.zig",
+   "t": "file:src/convert/safetensors_out.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert.zig",
+   "t": "file:src/convert/source.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert.zig",
+   "t": "file:src/convert/stream_writer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/gguf.zig",
+   "t": "file:src/arrays.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/gguf.zig",
+   "t": "file:src/convert/source.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/gguf.zig",
+   "t": "file:src/convert/stream_writer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/gguf.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/gguf.zig",
+   "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/gguf.zig",
+   "t": "file:src/quant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/hf.zig",
+   "t": "file:src/arrays.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/hf.zig",
+   "t": "file:src/convert/gguf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/hf.zig",
+   "t": "file:src/convert/hf_tokenizer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/hf.zig",
+   "t": "file:src/convert/source.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/hf.zig",
+   "t": "file:src/convert/stream_writer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/hf.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/hf.zig",
+   "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/hf_tokenizer.zig",
+   "t": "file:src/arrays.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/safetensors_out.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/safetensors_out.zig",
+   "t": "file:src/reader.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/stream_writer.zig",
+   "t": "file:src/buf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/stream_writer.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/stream_writer.zig",
+   "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/stream_writer.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/convert/stream_writer.zig",
+   "t": "file:src/tensor_toc.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/cuda.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine.zig",
+   "t": "file:src/engine/kv.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine.zig",
+   "t": "file:src/engine/matmul.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine.zig",
+   "t": "file:src/engine/model.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine.zig",
+   "t": "file:src/engine/ops.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine.zig",
+   "t": "file:src/engine/session.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine.zig",
+   "t": "file:src/engine/weights.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/attention.zig",
+   "t": "file:src/engine/attention_kernel.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/attention.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/attention.zig",
+   "t": "file:src/engine/kv.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/attention.zig",
+   "t": "file:src/kernels.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/attention.zig",
+   "t": "file:src/pool.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/attention_kernel.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/attention_kernel.zig",
+   "t": "file:src/engine/kv.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/attention_kernel.zig",
+   "t": "file:src/engine/ops.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/attention_kernel.zig",
+   "t": "file:src/pool.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/config.zig",
+   "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/kv.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/matmul.zig",
+   "t": "file:src/engine/weights.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/matmul.zig",
+   "t": "file:src/kernels.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/matmul.zig",
+   "t": "file:src/pool.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/matmul.zig",
+   "t": "file:src/quant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/cores.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/engine/attention.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/engine/kv.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/engine/matmul.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/engine/ops.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/engine/weights.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/kernels.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/pool.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/quant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/reader.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/vk/engine.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
+   "t": "file:src/vk/vk.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/ops.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/session.zig",
+   "t": "file:src/engine/model.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/weights.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/weights.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/weights.zig",
+   "t": "file:src/quant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/weights.zig",
+   "t": "file:src/reader.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gguf.zig",
+   "t": "file:src/buf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gguf.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gguf.zig",
+   "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gguf.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gguf.zig",
+   "t": "file:src/reader.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gguf.zig",
+   "t": "file:src/writer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hub.zig",
+   "t": "file:src/hub/hf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hub.zig",
+   "t": "file:src/hub/http.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hub.zig",
+   "t": "file:src/hub/pull.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hub/hf.zig",
+   "t": "file:src/hub/http.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hub/http.zig",
+   "t": "file:src/convert/source.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hub/pull.zig",
+   "t": "file:src/convert/gguf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hub/pull.zig",
+   "t": "file:src/convert/hf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hub/pull.zig",
+   "t": "file:src/convert/source.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hub/pull.zig",
+   "t": "file:src/hub/hf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hub/pull.zig",
+   "t": "file:src/hub/http.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/integrity.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/integrity.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels.zig",
+   "t": "file:src/kernels/api.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels.zig",
+   "t": "file:src/kernels/variants.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels/api.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels/api.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels/api.zig",
+   "t": "file:src/pool.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels/api.zig",
+   "t": "file:src/quant/gemm.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels/api.zig",
+   "t": "file:src/quant/vecdot.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels_impl.zig",
+   "t": "file:src/engine/attention_kernel.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels_impl.zig",
+   "t": "file:src/engine/ops.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels_impl.zig",
+   "t": "file:src/kernels/api.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels_impl.zig",
+   "t": "file:src/quant/gemm.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels_impl.zig",
+   "t": "file:src/quant/isa.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/kernels_impl.zig",
+   "t": "file:src/quant/vecdot.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/metadata.zig",
+   "t": "file:src/buf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/metadata.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/metadata.zig",
+   "t": "file:src/integrity.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/metadata.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/metadata.zig",
+   "t": "file:src/transaction.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant.zig",
+   "t": "file:src/quant/blocks.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant.zig",
+   "t": "file:src/quant/dequant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant.zig",
+   "t": "file:src/quant/gemm.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant.zig",
+   "t": "file:src/quant/isa.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant.zig",
+   "t": "file:src/quant/tables.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant.zig",
+   "t": "file:src/quant/unpack.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant.zig",
+   "t": "file:src/quant/vecdot.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/blocks.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/dequant.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/dequant.zig",
+   "t": "file:src/quant/blocks.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/dequant.zig",
+   "t": "file:src/quant/tables.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/gemm.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/gemm.zig",
+   "t": "file:src/quant/blocks.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/gemm.zig",
+   "t": "file:src/quant/dequant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/gemm.zig",
+   "t": "file:src/quant/isa.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/gemm.zig",
+   "t": "file:src/quant/tables.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/gemm.zig",
+   "t": "file:src/quant/unpack.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/gemm.zig",
+   "t": "file:src/quant/vecdot.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/unpack.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/unpack.zig",
+   "t": "file:src/quant/blocks.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/unpack.zig",
+   "t": "file:src/quant/dequant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/unpack.zig",
+   "t": "file:src/quant/isa.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/unpack.zig",
+   "t": "file:src/quant/tables.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/vecdot.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/vecdot.zig",
+   "t": "file:src/quant/blocks.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/vecdot.zig",
+   "t": "file:src/quant/dequant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/vecdot.zig",
+   "t": "file:src/quant/isa.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/vecdot.zig",
+   "t": "file:src/quant/tables.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quant/vecdot.zig",
+   "t": "file:src/quant/unpack.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/quantization.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/reader.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/reader.zig",
+   "t": "file:src/integrity.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/reader.zig",
+   "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/reader.zig",
+   "t": "file:src/nf4.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/reader.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/reader.zig",
+   "t": "file:src/quant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/reader.zig",
+   "t": "file:src/quantization.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/reader.zig",
+   "t": "file:src/sparsity.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/reader.zig",
+   "t": "file:src/tensor_toc.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/reader.zig",
+   "t": "file:src/tiling.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/adaptive.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/appendix.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/arrays.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/buf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/c_api.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/chat.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/context.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/convert.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/cores.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/cuda.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/engine.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/expansion.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/gguf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/growth.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/hf_mapper.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/hub.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/integrity.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/kernels.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/nf4.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/pipeline.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/pool.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/quant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/quantization.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/reader.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/safetensors.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/sampler.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/sandbox.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/server.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/sparsity.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/tensor_ops.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/tensor_toc.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/tiling.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/tokenizer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/transaction.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/vk/engine.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/vk/vk.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/writer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/safetensors.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/safetensors.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/safetensors.zig",
+   "t": "file:src/quantization.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/safetensors.zig",
+   "t": "file:src/writer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/sampler.zig",
+   "t": "file:src/engine/ops.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/server.zig",
+   "t": "file:src/server/api.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/server.zig",
+   "t": "file:src/server/scheduler.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/server/api.zig",
+   "t": "file:src/chat.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/server/api.zig",
+   "t": "file:src/sampler.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/server/api.zig",
+   "t": "file:src/server/scheduler.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/server/api.zig",
+   "t": "file:src/tokenizer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/server/scheduler.zig",
+   "t": "file:src/engine/model.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/server/scheduler.zig",
+   "t": "file:src/engine/session.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/server/scheduler.zig",
+   "t": "file:src/sampler.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/server/scheduler.zig",
+   "t": "file:src/tokenizer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tensor_ops.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tensor_ops.zig",
+   "t": "file:src/nf4.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tensor_ops.zig",
+   "t": "file:src/quantization.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tensor_toc.zig",
+   "t": "file:src/buf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tensor_toc.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tiling.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tokenizer.zig",
+   "t": "file:src/arrays.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tokenizer.zig",
+   "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tokenizer.zig",
+   "t": "file:src/tokenizer/pretok.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tokenizer.zig",
+   "t": "file:src/tokenizer/regex.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tokenizer.zig",
+   "t": "file:src/tokenizer/unicode.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tokenizer/pretok.zig",
+   "t": "file:src/tokenizer/regex.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/tokenizer/regex.zig",
+   "t": "file:src/tokenizer/unicode.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/transaction.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/transaction.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/vk/engine.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/vk/engine.zig",
+   "t": "file:src/engine/kv.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/vk/engine.zig",
+   "t": "file:src/engine/weights.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/vk/engine.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/vk/engine.zig",
+   "t": "file:src/quant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/vk/engine.zig",
+   "t": "file:src/vk/vk.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/vk/vk.zig",
+   "t": "file:src/vk/c.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/writer.zig",
+   "t": "file:src/buf.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/writer.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/writer.zig",
+   "t": "file:src/integrity.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/writer.zig",
+   "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/writer.zig",
+   "t": "file:src/platform.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/writer.zig",
+   "t": "file:src/tensor_toc.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/bench_kernels.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/cli_tests.zig",
+   "t": "file:tests/support/proc.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/cli_tests.zig",
+   "t": "file:tests/support/tiny_model.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/hub_tests.zig",
+   "t": "file:tests/support/mock_hub.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/hub_tests.zig",
+   "t": "file:tests/support/proc.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/hub_tests.zig",
+   "t": "file:tests/support/tiny_model.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/roundtrip_tests.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/server_tests.zig",
+   "t": "file:tests/support/http.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/server_tests.zig",
+   "t": "file:tests/support/proc.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/server_tests.zig",
+   "t": "file:tests/support/tiny_model.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/support/http.zig",
+   "t": "file:tests/support/proc.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/test_bench_compare.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/test_cuda.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/test_engine.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/test_gpu.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/test_gpu.zig",
+   "t": "file:tests/support/tiny_model.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/test_quant.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tests/tiny_model_tool.zig",
+   "t": "file:tests/support/tiny_model.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tools/cli_hub.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tools/hk_cli.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tools/hk_cli.zig",
+   "t": "file:tools/cli_hub.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tools/hk_gpu_bench.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tools/hk_probe.zig",
+   "t": "file:src/root.zig",
+   "type": "imports"
+  }
+ ],
+ "coupling": [
+  {
+   "s": "appendix-lineage",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "appendix-lineage",
+   "t": "integrity",
+   "imports": 1
+  },
+  {
+   "s": "appendix-lineage",
+   "t": "platform-mmap",
+   "imports": 1
+  },
+  {
+   "s": "backend-cuda-standalone",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "engine",
+   "imports": 2
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "kv-cache",
+   "imports": 1
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "quant-formats",
+   "imports": 1
+  },
+  {
+   "s": "c-abi",
+   "t": "appendix-lineage",
+   "imports": 1
+  },
+  {
+   "s": "c-abi",
+   "t": "converters",
+   "imports": 3
+  },
+  {
+   "s": "c-abi",
+   "t": "engine",
+   "imports": 1
+  },
+  {
+   "s": "c-abi",
+   "t": "format-core",
+   "imports": 4
+  },
+  {
+   "s": "c-abi",
+   "t": "growth",
+   "imports": 2
+  },
+  {
+   "s": "c-abi",
+   "t": "kernels-legacy",
+   "imports": 2
+  },
+  {
+   "s": "c-abi",
+   "t": "nf4-dq",
+   "imports": 1
+  },
+  {
+   "s": "c-abi",
+   "t": "platform-mmap",
+   "imports": 1
+  },
+  {
+   "s": "c-abi",
+   "t": "sampler",
+   "imports": 1
+  },
+  {
+   "s": "c-abi",
+   "t": "sparsity-storage",
+   "imports": 2
+  },
+  {
+   "s": "c-abi",
+   "t": "tokenizer",
+   "imports": 1
+  },
+  {
+   "s": "cli",
+   "t": "hub-pull",
+   "imports": 1
+  },
+  {
+   "s": "cli",
+   "t": "tests-suite",
+   "imports": 2
+  },
+  {
+   "s": "converters",
+   "t": "format-core",
+   "imports": 20
+  },
+  {
+   "s": "converters",
+   "t": "kernels-legacy",
+   "imports": 1
+  },
+  {
+   "s": "converters",
+   "t": "platform-mmap",
+   "imports": 3
+  },
+  {
+   "s": "converters",
+   "t": "quant-formats",
+   "imports": 1
+  },
+  {
+   "s": "engine",
+   "t": "backend-vulkan",
+   "imports": 2
+  },
+  {
+   "s": "engine",
+   "t": "format-core",
+   "imports": 4
+  },
+  {
+   "s": "engine",
+   "t": "kernels-engine",
+   "imports": 3
+  },
+  {
+   "s": "engine",
+   "t": "kv-cache",
+   "imports": 4
+  },
+  {
+   "s": "engine",
+   "t": "quant-formats",
+   "imports": 3
+  },
+  {
+   "s": "format-core",
+   "t": "integrity",
+   "imports": 3
+  },
+  {
+   "s": "format-core",
+   "t": "kernels-legacy",
+   "imports": 1
+  },
+  {
+   "s": "format-core",
+   "t": "nf4-dq",
+   "imports": 1
+  },
+  {
+   "s": "format-core",
+   "t": "platform-mmap",
+   "imports": 3
+  },
+  {
+   "s": "format-core",
+   "t": "quant-formats",
+   "imports": 1
+  },
+  {
+   "s": "format-core",
+   "t": "sparsity-storage",
+   "imports": 2
+  },
+  {
+   "s": "format-core",
+   "t": "transaction",
+   "imports": 1
+  },
+  {
+   "s": "growth",
+   "t": "appendix-lineage",
+   "imports": 1
+  },
+  {
+   "s": "growth",
+   "t": "python-sdk",
+   "imports": 1
+  },
+  {
+   "s": "hub-pull",
+   "t": "converters",
+   "imports": 4
+  },
+  {
+   "s": "hub-pull",
+   "t": "tests-suite",
+   "imports": 2
+  },
+  {
+   "s": "integrity",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "integrity",
+   "t": "platform-mmap",
+   "imports": 1
+  },
+  {
+   "s": "kernels-engine",
+   "t": "engine",
+   "imports": 4
+  },
+  {
+   "s": "kernels-engine",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "kernels-engine",
+   "t": "quant-formats",
+   "imports": 5
+  },
+  {
+   "s": "kernels-legacy",
+   "t": "format-core",
+   "imports": 2
+  },
+  {
+   "s": "kernels-legacy",
+   "t": "nf4-dq",
+   "imports": 1
+  },
+  {
+   "s": "kv-cache",
+   "t": "engine",
+   "imports": 1
+  },
+  {
+   "s": "nf4-dq",
+   "t": "python-sdk",
+   "imports": 2
+  },
+  {
+   "s": "pruning",
+   "t": "nf4-dq",
+   "imports": 1
+  },
+  {
+   "s": "python-sdk",
+   "t": "appendix-lineage",
+   "imports": 1
+  },
+  {
+   "s": "python-sdk",
+   "t": "architecture-registry",
+   "imports": 3
+  },
+  {
+   "s": "python-sdk",
+   "t": "code-sandbox",
+   "imports": 1
+  },
+  {
+   "s": "python-sdk",
+   "t": "growth",
+   "imports": 3
+  },
+  {
+   "s": "python-sdk",
+   "t": "gui",
+   "imports": 1
+  },
+  {
+   "s": "python-sdk",
+   "t": "nf4-dq",
+   "imports": 4
+  },
+  {
+   "s": "python-sdk",
+   "t": "pruning",
+   "imports": 1
+  },
+  {
+   "s": "python-sdk",
+   "t": "self-training",
+   "imports": 2
+  },
+  {
+   "s": "python-sdk",
+   "t": "trainer",
+   "imports": 2
+  },
+  {
+   "s": "quant-formats",
+   "t": "format-core",
+   "imports": 5
+  },
+  {
+   "s": "sampler",
+   "t": "engine",
+   "imports": 1
+  },
+  {
+   "s": "self-training",
+   "t": "appendix-lineage",
+   "imports": 1
+  },
+  {
+   "s": "self-training",
+   "t": "code-sandbox",
+   "imports": 2
+  },
+  {
+   "s": "self-training",
+   "t": "growth",
+   "imports": 2
+  },
+  {
+   "s": "server",
+   "t": "engine",
+   "imports": 2
+  },
+  {
+   "s": "server",
+   "t": "sampler",
+   "imports": 2
+  },
+  {
+   "s": "server",
+   "t": "tests-suite",
+   "imports": 3
+  },
+  {
+   "s": "server",
+   "t": "tokenizer",
+   "imports": 3
+  },
+  {
+   "s": "sparsity-storage",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "tokenizer",
+   "t": "format-core",
+   "imports": 2
+  },
+  {
+   "s": "trainer",
+   "t": "appendix-lineage",
+   "imports": 2
+  },
+  {
+   "s": "trainer",
+   "t": "code-sandbox",
+   "imports": 1
+  },
+  {
+   "s": "trainer",
+   "t": "python-sdk",
+   "imports": 2
+  },
+  {
+   "s": "transaction",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "transaction",
+   "t": "platform-mmap",
+   "imports": 1
+  }
+ ],
+ "unowned_files": []
+}

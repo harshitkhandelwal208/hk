@@ -16,6 +16,7 @@ const cores = @import("../cores.zig");
 const gpu_mod = @import("../vk/engine.zig");
 const backend_mod = @import("../backend/backend.zig");
 const cuda_engine = @import("../cuda/engine.zig");
+const rocm_engine = @import("../rocm/engine.zig");
 const ops = @import("ops.zig");
 
 pub const Config = config_mod.Config;
@@ -158,6 +159,7 @@ pub const Model = struct {
         _ = diag;
         const vopts = gpu_mod.Options{ .n_batch = self.n_batch, .n_ctx = self.n_ctx, .slots = opts.gpu_slots, .device = opts.gpu_device };
         const copts = cuda_engine.Options{ .n_batch = self.n_batch, .n_ctx = self.n_ctx, .slots = opts.gpu_slots };
+        const ropts = rocm_engine.Options{ .n_batch = self.n_batch, .n_ctx = self.n_ctx, .slots = opts.gpu_slots };
         // `--gpu-layers 0` is the CPU.
         if (opts.gpu_layers) |n| if (n == 0) {
             self.setNote("0 layers were requested on the device");
@@ -169,11 +171,14 @@ pub const Model = struct {
         // portable tiled ones, about 5x slower than Vulkan's on prompts). `--backend` overrides the order.
         const vk_cand = backend_mod.probeVulkan(self.allocator, &self.weights, self.cfg, vopts);
         const cuda_cand = backend_mod.probeCuda(&self.weights, self.cfg, copts);
+        // ROCm goes last in `auto`: it has no matrix-core kernels yet, so on a machine that also has a Vulkan driver the
+        // Vulkan backend (cooperative matrices) is the better bet; ROCm is chosen there with `--backend rocm`.
+        const rocm_cand = backend_mod.probeRocm(&self.weights, self.cfg, ropts);
         const cuda_first = cuda_cand.unusable == null and cuda_engine_tensor_cores();
         const candidates = if (cuda_first)
-            [_]backend_mod.select.Candidate{ cuda_cand, vk_cand }
+            [_]backend_mod.select.Candidate{ cuda_cand, vk_cand, rocm_cand }
         else
-            [_]backend_mod.select.Candidate{ vk_cand, cuda_cand };
+            [_]backend_mod.select.Candidate{ vk_cand, cuda_cand, rocm_cand };
         const plan = backend_mod.select.plan(.{ .choice = opts.backend, .n_ctx = self.n_ctx, .candidates = &candidates, .force_layers = opts.gpu_layers });
 
         if (plan.target == .cpu) {
@@ -229,6 +234,26 @@ pub const Model = struct {
                     return e;
                 };
                 self.gpu = .{ .cuda = eng };
+                self.n_ctx = go.n_ctx;
+                self.setPartial(plan.layers);
+            },
+            .rocm => {
+                var go = ropts;
+                go.n_ctx = plan.n_ctx;
+                go.layers = plan.layers;
+                const eng = try self.allocator.create(rocm_engine.Engine);
+                errdefer self.allocator.destroy(eng);
+                eng.* = rocm_engine.Engine.init(self.allocator, &self.weights, self.cfg, self.inv_freq, self.rope_mscale, go) catch |e| {
+                    self.gpu_note_notable = true;
+                    self.setNote(switch (e) {
+                        error.UnsupportedType => "a weight format has no ROCm kernel yet",
+                        error.UnsupportedShape => "a tensor shape is not supported on ROCm",
+                        error.OutOfDeviceMemory => "the model does not fit in device memory",
+                        else => "the ROCm engine failed to start",
+                    });
+                    return e;
+                };
+                self.gpu = .{ .rocm = eng };
                 self.n_ctx = go.n_ctx;
                 self.setPartial(plan.layers);
             },

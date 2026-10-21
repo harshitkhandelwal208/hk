@@ -26,6 +26,7 @@ pub const Choice = enum {
     cpu,
     vulkan,
     cuda,
+    rocm,
 
     pub fn wants(self: Choice, target: Target) bool {
         return switch (self) {
@@ -33,6 +34,7 @@ pub const Choice = enum {
             .cpu => target == .cpu,
             .vulkan => target == .vulkan,
             .cuda => target == .cuda,
+            .rocm => target == .rocm,
         };
     }
 };
@@ -49,7 +51,7 @@ pub fn wants(choice: Choice) Wants {
     return switch (choice) {
         .cpu => .{ .device = false, .required = false },
         .auto => .{ .device = true, .required = false },
-        .vulkan, .cuda => .{ .device = true, .required = true },
+        .vulkan, .cuda, .rocm => .{ .device = true, .required = true },
     };
 }
 
@@ -215,6 +217,7 @@ pub fn plan(in: Inputs) Plan {
     if (!asked_target_present) switch (in.choice) {
         .vulkan => p.reject(.vulkan, .{ .unavailable = "this build has no Vulkan backend" }),
         .cuda => p.reject(.cuda, .{ .unavailable = "this build has no CUDA backend" }),
+        .rocm => p.reject(.rocm, .{ .unavailable = "this build has no ROCm backend" }),
         .auto, .cpu => {},
     };
     return p;
@@ -300,9 +303,22 @@ test "an explicit choice restricts the search" {
     try std.testing.expectEqual(@as(usize, 0), none.n_rejections);
 }
 
+test "ROCm is chosen only when asked for or when nothing earlier fits; naming it with no ROCm candidate says so" {
+    var cs = [_]Candidate{ cand(.vulkan, 6000, 1000, 100), cand(.rocm, 6000, 1000, 100) };
+    // Auto takes the first usable candidate in the caller's order, so the order decides, not the vendor.
+    try std.testing.expectEqual(Target.vulkan, plan(.{ .n_ctx = 4096, .candidates = &cs }).target);
+    try std.testing.expectEqual(Target.rocm, plan(.{ .choice = .rocm, .n_ctx = 4096, .candidates = &cs }).target);
+    cs[0].unusable = "no Vulkan driver found";
+    try std.testing.expectEqual(Target.rocm, plan(.{ .n_ctx = 4096, .candidates = &cs }).target);
+    const none = plan(.{ .choice = .rocm, .n_ctx = 4096, .candidates = &[_]Candidate{cand(.vulkan, 6000, 1000, 100)} });
+    try std.testing.expectEqual(Target.cpu, none.target);
+    try std.testing.expectEqual(Target.rocm, none.rejected()[0].target);
+}
+
 test "naming a device means use it or fail; auto may fall back; cpu never tries a device" {
     try std.testing.expect(wants(.vulkan).required and wants(.vulkan).device);
     try std.testing.expect(wants(.cuda).required and wants(.cuda).device);
+    try std.testing.expect(wants(.rocm).required and wants(.rocm).device);
     try std.testing.expect(wants(.auto).device and !wants(.auto).required);
     try std.testing.expect(!wants(.cpu).device and !wants(.cpu).required);
 }

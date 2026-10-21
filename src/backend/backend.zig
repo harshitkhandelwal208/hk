@@ -16,7 +16,9 @@ const std = @import("std");
 const kv_mod = @import("../engine/kv.zig");
 const vk_engine = @import("../vk/engine.zig");
 const cuda_engine = @import("../cuda/engine.zig");
+const rocm_engine = @import("../rocm/engine.zig");
 const cuda = @import("../cuda.zig");
+const hip = @import("../hip.zig");
 const vk = @import("../vk/vk.zig");
 const weights_mod = @import("../engine/weights.zig");
 const config_mod = @import("../engine/config.zig");
@@ -24,9 +26,9 @@ const config_mod = @import("../engine/config.zig");
 pub const caps = @import("caps.zig");
 pub const select = @import("select.zig");
 
-pub const Kind = enum { vulkan, cuda };
+pub const Kind = enum { vulkan, cuda, rocm };
 
-pub const Error = vk_engine.Error || cuda_engine.Error;
+pub const Error = vk_engine.Error || cuda_engine.Error || rocm_engine.Error;
 
 pub const Item = kv_mod.Item;
 
@@ -125,9 +127,47 @@ pub fn probeCuda(
     return cand;
 }
 
+/// Probes ROCm (HIP) for the planner. See `probeVulkan`.
+pub fn probeRocm(
+    w: *const weights_mod.Weights,
+    cfg: config_mod.Config,
+    opts: rocm_engine.Options,
+) select.Candidate {
+    var cand = select.Candidate{
+        .target = .rocm,
+        .need = .{ .base = 0, .per_ctx = 0 },
+        .unsupported = caps.firstUnsupported(.rocm, w),
+    };
+    if (!hip.enabled) {
+        cand.unusable = "this build has no ROCm backend";
+        return cand;
+    }
+    if (!hip.isAvailable()) {
+        cand.unusable = hip.unavailableReason();
+        return cand;
+    }
+    _ = hip.deviceKernel("rms_norm") catch {
+        cand.unusable = "the ROCm device code could not be loaded by the runtime";
+        return cand;
+    };
+    const free = hip.freeMemBytes() catch {
+        cand.unusable = "the ROCm device could not be queried";
+        return cand;
+    };
+    cand.free_bytes = @intCast(@max(free, 0));
+    var o = opts;
+    o.n_ctx = 0;
+    const base = rocm_engine.bytesNeeded(w, cfg, o);
+    o.n_ctx = 1;
+    cand.need = .{ .base = base, .per_ctx = rocm_engine.bytesNeeded(w, cfg, o) - base };
+    cand.need.partial = partialNeed(w, cfg, o, rocm_engine.bytesNeeded, rocm_engine.layerBytes);
+    return cand;
+}
+
 pub const Device = union(Kind) {
     vulkan: *vk_engine.Engine,
     cuda: *cuda_engine.Engine,
+    rocm: *rocm_engine.Engine,
 
     pub fn kind(self: Device) Kind {
         return std.meta.activeTag(self);
@@ -138,6 +178,7 @@ pub const Device = union(Kind) {
         return switch (self) {
             .vulkan => "Vulkan",
             .cuda => "CUDA",
+            .rocm => "ROCm",
         };
     }
 

@@ -42,6 +42,7 @@ pub const pipeline = @import("pipeline.zig");
 pub const adaptive = @import("adaptive.zig");
 pub const c_api = @import("c_api.zig");
 pub const cuda = @import("cuda.zig");
+pub const hip = @import("hip.zig");
 
 // Re-export key structs
 pub const FileHeader = format.FileHeader;

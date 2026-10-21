@@ -1,6 +1,7 @@
-//! Device code for the CUDA backend. Compiled for nvptx64 only (never imported by host code); `build.zig` turns it
-//! into PTX that the host embeds and the driver JIT-compiles for whatever GPU is present, so building HK needs no
-//! CUDA toolkit.
+//! Device code for the GPU backends, written once in Zig. Compiled for nvptx64 (NVIDIA: `build.zig` turns it into PTX
+//! that the host embeds and the driver JIT-compiles for whatever GPU is present, so building HK needs no CUDA toolkit)
+//! and for amdgcn (AMD RDNA: a code object the HIP runtime loads). Never imported by host code. The per-architecture
+//! primitives (thread ids, barrier, shuffles, dp4a) live in `gpu_prims.zig`; the tensor core kernels exist for NVIDIA only.
 //!
 //! Weight formats are not re-implemented here. A matrix-vector kernel is instantiated per storage type at comptime
 //! and calls the same exact block decoders the CPU engine is tested against (`quant/dequant.zig`), so a format that
@@ -17,36 +18,17 @@ pub const panic = std.debug.no_panic;
 
 // -- thread intrinsics -------------------------------------------------------------------------------------------
 
-inline fn tid() u32 {
-    return asm volatile ("mov.u32 %[r], %%tid.x;"
-        : [r] "=r" (-> u32),
-    );
-}
-inline fn bid() u32 {
-    return asm volatile ("mov.u32 %[r], %%ctaid.x;"
-        : [r] "=r" (-> u32),
-    );
-}
-inline fn bidY() u32 {
-    return asm volatile ("mov.u32 %[r], %%ctaid.y;"
-        : [r] "=r" (-> u32),
-    );
-}
-inline fn bdim() u32 {
-    return asm volatile ("mov.u32 %[r], %%ntid.x;"
-        : [r] "=r" (-> u32),
-    );
-}
-inline fn barSync() void {
-    asm volatile ("bar.sync 0;" ::: .{ .memory = true });
-}
-inline fn shflDown(v: f32, off: u32) f32 {
-    return asm volatile ("shfl.sync.down.b32 %[r], %[v], %[o], 31, 0xffffffff;"
-        : [r] "=f" (-> f32),
-        : [v] "f" (v),
-          [o] "r" (off),
-    );
-}
+const gpu = @import("gpu_prims.zig");
+const tid = gpu.tid;
+const bid = gpu.bid;
+const bidY = gpu.bidY;
+const bdim = gpu.bdim;
+const barSync = gpu.barSync;
+const shflDown = gpu.shflDown;
+const shflXor = gpu.shflXor;
+const shflIdx = gpu.shflIdx;
+const roundToInt = gpu.roundToInt;
+const dp4a = gpu.dp4a;
 
 /// One slot per warp, so up to 1024 threads.
 var reduce_scratch: [32]f32 addrspace(.shared) = undefined;
@@ -79,10 +61,7 @@ inline fn warpSum(v: f32) f32 {
     var off: u32 = 16;
     while (off > 0) : (off >>= 1) s += shflDown(s, off);
     // shfl.down leaves the total in lane 0 only; broadcast it.
-    return asm volatile ("shfl.sync.idx.b32 %[r], %[v], 0, 31, 0xffffffff;"
-        : [r] "=f" (-> f32),
-        : [v] "f" (s),
-    );
+    return shflIdx(s, 0);
 }
 
 /// Maximum of `v` over every thread of the block. All threads get the result.
@@ -111,10 +90,7 @@ inline fn blockMax(v: f32) f32 {
 /// polynomial the CPU engine uses.
 inline fn expf(x: f32) f32 {
     const y = x * 1.4426950408889634;
-    return asm volatile ("ex2.approx.ftz.f32 %[r], %[v];"
-        : [r] "=f" (-> f32),
-        : [v] "f" (y),
-    );
+    return gpu.exp2(y);
 }
 
 inline fn globalId() u32 {
@@ -521,20 +497,7 @@ comptime {
 // scale (and a minimum, for formats that have one): w = sc * q - mn, so a block's contribution to a token is
 // d_x * (sc * sum(q * xq) - mn * sum(xq)).
 
-inline fn shflXor(v: f32, mask: u32) f32 {
-    return asm volatile ("shfl.sync.bfly.b32 %[r], %[v], %[o], 31, 0xffffffff;"
-        : [r] "=f" (-> f32),
-        : [v] "f" (v),
-          [o] "r" (mask),
-    );
-}
 
-inline fn roundToInt(v: f32) i32 {
-    return asm volatile ("cvt.rni.s32.f32 %[r], %[v];"
-        : [r] "=r" (-> i32),
-        : [v] "f" (v),
-    );
-}
 
 /// Quantizes activations to int8 with one f32 scale per 32 values (`xs[b] = max|x| / 127`, `xq = round(x / scale)`) and
 /// the sum of each block's quants (`xsum`, for formats with a minimum). One warp per block of 32; `x` is [n][k] with k a
@@ -945,14 +908,6 @@ inline fn gemmImma(comptime t: format.StorageType, w: [*]const u8, xq: [*]const 
     };
 }
 
-inline fn dp4a(a: u32, b: u32, c: i32) i32 {
-    return asm volatile ("dp4a.s32.s32 %[d], %[a], %[b], %[c];"
-        : [d] "=r" (-> i32),
-        : [a] "r" (a),
-          [b] "r" (b),
-          [c] "r" (c),
-    );
-}
 
 /// Quantized activations of one chunk of a decode product: int8 quants as words, scale and sum per 32.
 var dq_x: [gemv_chunk / 4]u32 addrspace(.shared) = undefined;
@@ -1037,11 +992,7 @@ const fa_threads = 128;
 fn pairShuffleMax(v: f32) f32 {
     var m = v;
     inline for (.{ 1, 2 }) |off| {
-        const o = asm volatile ("shfl.sync.bfly.b32 %[r], %[v], %[o], 31, 0xffffffff;"
-            : [r] "=f" (-> f32),
-            : [v] "f" (m),
-              [o] "r" (@as(u32, off)),
-        );
+        const o = shflXor(m, @as(u32, off));
         m = @max(m, o);
     }
     return m;
@@ -1050,11 +1001,7 @@ fn pairShuffleMax(v: f32) f32 {
 fn quadShuffleSum(v: f32) f32 {
     var m = v;
     inline for (.{ 1, 2 }) |off| {
-        const o = asm volatile ("shfl.sync.bfly.b32 %[r], %[v], %[o], 31, 0xffffffff;"
-            : [r] "=f" (-> f32),
-            : [v] "f" (m),
-              [o] "r" (@as(u32, off)),
-        );
+        const o = shflXor(m, @as(u32, off));
         m += o;
     }
     return m;
@@ -1633,13 +1580,6 @@ var warp_m: [4]f32 addrspace(.shared) = undefined;
 var warp_l: [4]f32 addrspace(.shared) = undefined;
 var warp_acc: [4][256]f32 addrspace(.shared) = undefined;
 
-inline fn shflIdx(v: f32, src: u32) f32 {
-    return asm volatile ("shfl.sync.idx.b32 %[r], %[v], %[s], 31, 0xffffffff;"
-        : [r] "=f" (-> f32),
-        : [v] "f" (v),
-          [s] "r" (src),
-    );
-}
 
 inline fn halfPair(w: u32) [2]f32 {
     return .{ @floatCast(@as(f16, @bitCast(@as(u16, @truncate(w))))), @floatCast(@as(f16, @bitCast(@as(u16, @truncate(w >> 16))))) };

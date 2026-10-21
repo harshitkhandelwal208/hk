@@ -11,3 +11,10 @@ pub fn isSet(name: [*:0]const u8) bool {
     if (builtin.os.tag == .windows or !builtin.link_libc) return false;
     return std.c.getenv(name) != null;
 }
+
+/// The variable's value, or null when it is unset (or this build has no way to read it, as for `isSet`).
+pub fn get(name: [*:0]const u8) ?[]const u8 {
+    if (builtin.os.tag == .windows or !builtin.link_libc) return null;
+    const p = std.c.getenv(name) orelse return null;
+    return std.mem.span(p);
+}

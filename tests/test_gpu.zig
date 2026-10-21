@@ -1,4 +1,4 @@
-//! A device engine must compute what the CPU engine computes. Each check runs for Vulkan and for CUDA and is skipped
+//! A device engine must compute what the CPU engine computes. Each check runs for Vulkan, CUDA and ROCm and is skipped
 //! (per backend) when the machine has no usable device of that kind.
 
 const std = @import("std");
@@ -93,6 +93,7 @@ fn expectedKind(backend: Choice) hk.backend.Kind {
     return switch (backend) {
         .vulkan => .vulkan,
         .cuda => .cuda,
+        .rocm => .rocm,
         else => unreachable,
     };
 }
@@ -120,6 +121,10 @@ test "the Vulkan engine matches the CPU engine" {
 
 test "the CUDA engine matches the CPU engine" {
     try checkAllVariants(.cuda);
+}
+
+test "the ROCm engine matches the CPU engine" {
+    try checkAllVariants(.rocm);
 }
 
 /// Two sequences share one pass, positions advance independently, a third sequence has no slot until one is released.
@@ -201,6 +206,10 @@ test "the CUDA engine keeps sequences apart and runs out of slots loudly" {
     try checkSlots(.cuda);
 }
 
+test "the ROCm engine keeps sequences apart and runs out of slots loudly" {
+    try checkSlots(.rocm);
+}
+
 /// A context long enough that decode slices attention across several blocks (more than 256 positions), checked token
 /// by token against the CPU. Prompt processing runs the whole-context kernel; every decode step runs the split one.
 fn checkLongContext(backend: Choice, head_dim: usize) !void {
@@ -222,7 +231,7 @@ fn checkLongContext(backend: Choice, head_dim: usize) !void {
 
     // Fewer, longer slices than usual so each warp of the CUDA decode attention walks several tiles and rescales between them.
     switch (dev.gpu.?) {
-        .cuda => |e| e.slice_positions = 400,
+        inline .cuda, .rocm => |e| e.slice_positions = 400,
         .vulkan => {},
     }
     const prompt_len = 700;
@@ -267,6 +276,12 @@ test "the CUDA engine matches the CPU on a long context (split-KV attention)" {
     try checkLongContext(.cuda, 128);
 }
 
+test "the ROCm engine matches the CPU on a long context (split-KV attention)" {
+    try checkLongContext(.rocm, 16);
+    try checkLongContext(.rocm, 64);
+    try checkLongContext(.rocm, 128);
+}
+
 /// Prompt attention has a matrix-unit kernel (Vulkan cooperative matrices, CUDA tensor cores) for head sizes 64 and 128
 /// (the tiny models elsewhere use 16, which runs the per-token kernel). The prompt arrives in two chunks, so the second starts at a position that is not a
 /// multiple of the kernel's 16 / 32 / 64 position tiles and attends over a cache the first one wrote.
@@ -290,6 +305,7 @@ fn checkPromptAttention(head_dim: usize, backend: Choice, q8: bool) !void {
     switch (dev.gpu.?) {
         .vulkan => |e| if (std.mem.startsWith(u8, e.matmulPath(), "cooperative")) try std.testing.expect(e.promptAttentionIsCooperative()),
         .cuda => |e| if (hk.cuda.hasTensorCores()) try std.testing.expect(e.promptAttentionIsTensor()),
+        .rocm => {},
     }
 
     var prompt: [190]u32 = undefined;
@@ -343,6 +359,14 @@ test "the CUDA prompt attention matches the CPU at head size 64" {
 
 test "the CUDA prompt attention matches the CPU at head size 128" {
     try checkPromptAttention(128, .cuda, false);
+}
+
+test "the ROCm prompt attention matches the CPU at head size 64" {
+    try checkPromptAttention(64, .rocm, false);
+}
+
+test "the ROCm prompt attention matches the CPU at head size 128" {
+    try checkPromptAttention(128, .rocm, false);
 }
 
 /// Partial offload: the first layers run on the device, the rest (and the embedding and output) on the CPU. The result
@@ -407,6 +431,11 @@ test "the CUDA engine runs the leading layers and the CPU the rest" {
     try checkPartial(.cuda, 3);
 }
 
+test "the ROCm engine runs the leading layers and the CPU the rest" {
+    try checkPartial(.rocm, 1);
+    try checkPartial(.rocm, 3);
+}
+
 test "the CUDA integer tensor core kernel on a Q8_0 model matches the CPU over a prompt" {
     try checkPromptAttention(64, .cuda, true);
     try checkPromptAttention(128, .vulkan, true);
@@ -441,6 +470,7 @@ fn checkOddShape(backend: Choice) !void {
 test "a device engine refuses rows that are not a whole number of 32 weights" {
     try checkOddShape(.cuda);
     try checkOddShape(.vulkan);
+    try checkOddShape(.rocm); // last: a machine without AMD hardware skips the test here, after the others ran
 }
 
 /// The server runs every request on a worker thread, not the one that loaded the model. A CUDA context is current per
@@ -478,4 +508,5 @@ fn checkOtherThread(backend: Choice) !void {
 test "a device engine works from a thread other than the one that loaded it" {
     try checkOtherThread(.cuda);
     try checkOtherThread(.vulkan);
+    try checkOtherThread(.rocm);
 }

@@ -12,6 +12,12 @@ pub fn build(b: *std.Build) void {
         "Enable the CUDA GPU backend (dynamically loads CUDA driver API at runtime)",
     ) orelse default_cuda;
 
+    const rocm_enabled = b.option(
+        bool,
+        "rocm",
+        "Enable the AMD ROCm/HIP GPU backend (dynamically loads the HIP runtime at run time; builds the amdgcn device code)",
+    ) orelse (target.result.os.tag == .linux or target.result.os.tag == .windows);
+
     // Instruction set levels of the hot kernels. Every level is compiled and the engine picks
     // the best one the CPU supports when it starts. Debug builds default to the portable level
     // only, which keeps test builds fast.
@@ -23,6 +29,7 @@ pub fn build(b: *std.Build) void {
 
     const build_opts = b.addOptions();
     build_opts.addOption(bool, "cuda", cuda_enabled);
+    build_opts.addOption(bool, "rocm", rocm_enabled);
     const build_opts_mod = build_opts.createModule();
 
     // Core HK Module
@@ -37,10 +44,12 @@ pub fn build(b: *std.Build) void {
 
     addKernelLevels(b, hk_mod, build_opts, target, optimize, kernel_sel);
 
+    // Android's libc (bionic) has dlopen built in, and the GPU runtimes are opened with it. Untested: Zig cannot provide
+    // bionic, so this needs the NDK (`--libc`), which has not been available here.
+    if (target.result.abi.isAndroid()) hk_mod.link_libc = true;
+
     if (cuda_enabled) {
-        if (target.result.os.tag != .windows) {
-            hk_mod.linkSystemLibrary("dl", .{});
-        }
+        if (needsLibDl(target.result)) hk_mod.linkSystemLibrary("dl", .{});
         // Device code is Zig too (src/cuda_device.zig). Zig compiles it to PTX, which the host embeds and the driver
         // JIT-compiles for the installed GPU, so no CUDA toolkit is needed to build HK. sm_70 is the oldest
         // architecture with the warp shuffles the kernels use; newer GPUs JIT it forward.
@@ -74,6 +83,28 @@ pub fn build(b: *std.Build) void {
             }),
         });
         hk_mod.addAnonymousImport("cuda_device_ptx_sm80", .{ .root_source_file = device_obj80.getEmittedAsm() });
+    }
+
+    if (rocm_enabled) {
+        if (needsLibDl(target.result)) hk_mod.linkSystemLibrary("dl", .{});
+        // The same device code (src/cuda_device.zig) compiled for AMD: one HSA code object for the generic gfx11 target,
+        // which covers RDNA3 (gfx1100 to gfx1103) and RDNA3.5. The wave32 kernels also suit RDNA1/2 and RDNA4, which would
+        // each need their own object (gfx10_3_generic, gfx12_generic); none is built or tested yet.
+        const amd_target = b.resolveTargetQuery(.{
+            .cpu_arch = .amdgcn,
+            .os_tag = .amdhsa,
+            .cpu_model = .{ .explicit = &std.Target.amdgcn.cpu.gfx11_generic },
+        });
+        const amd_lib = b.addLibrary(.{
+            .linkage = .dynamic,
+            .name = "hk_rocm_device",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/cuda_device.zig"),
+                .target = amd_target,
+                .optimize = .ReleaseFast,
+            }),
+        });
+        hk_mod.addAnonymousImport("rocm_device_co", .{ .root_source_file = amd_lib.getEmittedBin() });
     }
 
     // Shared Library (DLL / .so / .dylib) for C ABI bindings (Python ctypes, C#, etc.)
@@ -333,4 +364,9 @@ fn addKernelLevels(
         names.appendSlice(b.allocator, v.name) catch @panic("OOM");
     }
     build_opts.addOption([]const u8, "kernel_levels", names.items);
+}
+
+/// `dlopen` lives in a separate `libdl` on glibc; on Windows there is none, and on Android (bionic) it is part of libc.
+fn needsLibDl(t: std.Target) bool {
+    return t.os.tag != .windows and !t.abi.isAndroid();
 }

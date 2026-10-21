@@ -88,7 +88,7 @@ So: memory is a clear win, CPU prompt processing is mostly ahead, CUDA is close,
 I would rather you hear this from me than find it out.
 
 - Only Llama, Qwen2 and Qwen3 style dense models run. No Gemma, Phi, sliding window attention, mixture of experts or vision models.
-- GPU support was tested on **one NVIDIA laptop GPU**. Nothing was run on AMD, Intel or Apple GPUs, and there is no Metal, ROCm or TPU backend.
+- GPU support was tested on **one NVIDIA laptop GPU**. Nothing was run on AMD, Intel or Apple GPUs. A ROCm backend for AMD GPUs (RDNA3 and newer) is written and compiles, but has not been run on AMD hardware; there is no Metal or TPU backend.
 - The ARM kernels compile and pass the portable tests but have not been run on ARM hardware; the older x86 levels have not been benchmarked on older CPUs.
 - The `tokenizer.json` importer handles byte-level BPE only, so a safetensors repository with a SentencePiece or Unigram tokenizer is refused with a message (its GGUF version works).
 - Split GGUF files (`-00001-of-00003.gguf`) are not downloaded yet; no grammar or JSON-schema constrained decoding; no tool-call parsing; an interrupted conversion restarts from the beginning (the download resumes).

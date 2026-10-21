@@ -3,10 +3,10 @@
  "as_of": "2026-10-06 (commit 43cf891 + uncommitted integrity/transaction work)",
  "generated_by": "docs/graph/gen_graph.py",
  "stats": {
-  "curated_nodes": 79,
+  "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 184,
-  "import_edges": 425,
+  "file_nodes": 189,
+  "import_edges": 438,
   "unowned_files": 1,
   "status_counts": {
    "done": 9,
@@ -15,7 +15,7 @@
    "prototype": 8,
    "storage-only": 1,
    "legacy": 1,
-   "untested-hw": 0,
+   "untested-hw": 1,
    "not-started": 22
   }
  },
@@ -691,9 +691,27 @@
    ],
    "paths": [
     "src/cuda_device.zig",
-    "src/cuda/engine.zig"
+    "src/gpu_prims.zig",
+    "src/gpu",
+    "src/cuda/engine.zig",
+    "src/dynlib.zig"
    ],
-   "note": "First engine: whole network on one NVIDIA GPU via the driver API; device code in Zig (nvptx64 PTX built by build.zig, no CUDA toolkit). One generic GEMV kernel for all 26 CPU formats reuses quant/dequant.zig. Parity with CPU verified on one RTX 3050 (llama/qwen2/qwen3, f32/Q8_0, multi-slot). Early performance (synthetic model: prefill 1,190 / decode 360 tok/s vs Vulkan 5,719 / 406): tiled GEMM, split-KV attention; no fusion, graphs or Tensor Cores."
+   "note": "Whole network on one NVIDIA GPU via the driver API (shared engine src/gpu/engine.zig, instantiated per vendor; device primitives in gpu_prims.zig); device code in Zig (nvptx64 PTX built by build.zig, no CUDA toolkit). One generic GEMV kernel for all 26 CPU formats reuses quant/dequant.zig. Parity with CPU verified on one RTX 3050 (llama/qwen2/qwen3, f32/Q8_0, multi-slot). Early performance (synthetic model: prefill 1,190 / decode 360 tok/s vs Vulkan 5,719 / 406): tiled GEMM, split-KV attention; no fusion, graphs or Tensor Cores."
+  },
+  {
+   "id": "backend-rocm-engine",
+   "type": "subsystem",
+   "label": "ROCm engine backend (AMD, implemented, not run)",
+   "status": "untested-hw",
+   "plan": [
+    58,
+    150
+   ],
+   "paths": [
+    "src/hip.zig",
+    "src/rocm"
+   ],
+   "note": "The shared GPU engine instantiated for the HIP runtime (loaded at run time); device code is src/cuda_device.zig built for amdgcn gfx11-generic by build.zig (-Drocm). Compiles; planner/caps tested; never run on AMD hardware."
   },
   {
    "id": "backend-metal",
@@ -1581,7 +1599,7 @@
    "type": "file",
    "label": "src/backend/backend.zig",
    "lang": "zig",
-   "loc": 209,
+   "loc": 250,
    "owner": "backend-abstraction"
   },
   {
@@ -1589,7 +1607,7 @@
    "type": "file",
    "label": "src/backend/caps.zig",
    "lang": "zig",
-   "loc": 67,
+   "loc": 77,
    "owner": "backend-abstraction"
   },
   {
@@ -1597,7 +1615,7 @@
    "type": "file",
    "label": "src/backend/select.zig",
    "lang": "zig",
-   "loc": 398,
+   "loc": 414,
    "owner": "backend-abstraction"
   },
   {
@@ -1717,7 +1735,7 @@
    "type": "file",
    "label": "src/cuda.zig",
    "lang": "zig",
-   "loc": 1263,
+   "loc": 1230,
    "owner": "backend-cuda-standalone"
   },
   {
@@ -1725,7 +1743,7 @@
    "type": "file",
    "label": "src/cuda/engine.zig",
    "lang": "zig",
-   "loc": 817,
+   "loc": 12,
    "owner": "backend-cuda-engine"
   },
   {
@@ -1749,7 +1767,15 @@
    "type": "file",
    "label": "src/cuda_device.zig",
    "lang": "zig",
-   "loc": 1851,
+   "loc": 1791,
+   "owner": "backend-cuda-engine"
+  },
+  {
+   "id": "file:src/dynlib.zig",
+   "type": "file",
+   "label": "src/dynlib.zig",
+   "lang": "zig",
+   "loc": 42,
    "owner": "backend-cuda-engine"
   },
   {
@@ -1821,7 +1847,7 @@
    "type": "file",
    "label": "src/engine/model.zig",
    "lang": "zig",
-   "loc": 344,
+   "loc": 369,
    "owner": "engine"
   },
   {
@@ -1853,7 +1879,7 @@
    "type": "file",
    "label": "src/envvar.zig",
    "lang": "zig",
-   "loc": 13,
+   "loc": 20,
    "owner": null
   },
   {
@@ -1881,6 +1907,22 @@
    "owner": "converters"
   },
   {
+   "id": "file:src/gpu/engine.zig",
+   "type": "file",
+   "label": "src/gpu/engine.zig",
+   "lang": "zig",
+   "loc": 824,
+   "owner": "backend-cuda-engine"
+  },
+  {
+   "id": "file:src/gpu_prims.zig",
+   "type": "file",
+   "label": "src/gpu_prims.zig",
+   "lang": "zig",
+   "loc": 150,
+   "owner": "backend-cuda-engine"
+  },
+  {
    "id": "file:src/growth.zig",
    "type": "file",
    "label": "src/growth.zig",
@@ -1895,6 +1937,14 @@
    "lang": "zig",
    "loc": 357,
    "owner": "converters"
+  },
+  {
+   "id": "file:src/hip.zig",
+   "type": "file",
+   "label": "src/hip.zig",
+   "lang": "zig",
+   "loc": 474,
+   "owner": "backend-rocm-engine"
   },
   {
    "id": "file:src/hub.zig",
@@ -2121,11 +2171,19 @@
    "owner": "format-core"
   },
   {
+   "id": "file:src/rocm/engine.zig",
+   "type": "file",
+   "label": "src/rocm/engine.zig",
+   "lang": "zig",
+   "loc": 12,
+   "owner": "backend-rocm-engine"
+  },
+  {
    "id": "file:src/root.zig",
    "type": "file",
    "label": "src/root.zig",
    "lang": "zig",
-   "loc": 81,
+   "loc": 82,
    "owner": "c-abi"
   },
   {
@@ -2285,7 +2343,7 @@
    "type": "file",
    "label": "tests/cli_tests.zig",
    "lang": "zig",
-   "loc": 399,
+   "loc": 409,
    "owner": "cli"
   },
   {
@@ -2421,7 +2479,7 @@
    "type": "file",
    "label": "tests/test_gpu.zig",
    "lang": "zig",
-   "loc": 481,
+   "loc": 512,
    "owner": "tests-suite"
   },
   {
@@ -4143,6 +4201,31 @@
    "type": "implemented_by"
   },
   {
+   "s": "backend-cuda-engine",
+   "t": "file:src/dynlib.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-cuda-engine",
+   "t": "file:src/gpu/engine.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-cuda-engine",
+   "t": "file:src/gpu_prims.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-rocm-engine",
+   "t": "file:src/hip.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-rocm-engine",
+   "t": "file:src/rocm/engine.zig",
+   "type": "implemented_by"
+  },
+  {
    "s": "tests-suite",
    "t": "file:tests/conftest.py",
    "type": "implemented_by"
@@ -4799,6 +4882,16 @@
   },
   {
    "s": "file:src/backend/backend.zig",
+   "t": "file:src/hip.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/backend/backend.zig",
+   "t": "file:src/rocm/engine.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/backend/backend.zig",
    "t": "file:src/vk/engine.zig",
    "type": "imports"
   },
@@ -4825,6 +4918,11 @@
   {
    "s": "file:src/backend/caps.zig",
    "t": "file:src/quant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/backend/caps.zig",
+   "t": "file:src/rocm/engine.zig",
    "type": "imports"
   },
   {
@@ -5114,6 +5212,11 @@
   },
   {
    "s": "file:src/cuda.zig",
+   "t": "file:src/dynlib.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/cuda.zig",
    "t": "file:src/envvar.zig",
    "type": "imports"
   },
@@ -5129,37 +5232,17 @@
   },
   {
    "s": "file:src/cuda/engine.zig",
-   "t": "file:src/engine/config.zig",
-   "type": "imports"
-  },
-  {
-   "s": "file:src/cuda/engine.zig",
-   "t": "file:src/engine/kv.zig",
-   "type": "imports"
-  },
-  {
-   "s": "file:src/cuda/engine.zig",
-   "t": "file:src/engine/ops.zig",
-   "type": "imports"
-  },
-  {
-   "s": "file:src/cuda/engine.zig",
-   "t": "file:src/engine/weights.zig",
-   "type": "imports"
-  },
-  {
-   "s": "file:src/cuda/engine.zig",
-   "t": "file:src/format.zig",
-   "type": "imports"
-  },
-  {
-   "s": "file:src/cuda/engine.zig",
-   "t": "file:src/quant.zig",
+   "t": "file:src/gpu/engine.zig",
    "type": "imports"
   },
   {
    "s": "file:src/cuda_device.zig",
    "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/cuda_device.zig",
+   "t": "file:src/gpu_prims.zig",
    "type": "imports"
   },
   {
@@ -5429,6 +5512,11 @@
   },
   {
    "s": "file:src/engine/model.zig",
+   "t": "file:src/rocm/engine.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/model.zig",
    "t": "file:src/vk/engine.zig",
    "type": "imports"
   },
@@ -5490,6 +5578,51 @@
   {
    "s": "file:src/gguf.zig",
    "t": "file:src/writer.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gpu/engine.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gpu/engine.zig",
+   "t": "file:src/engine/kv.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gpu/engine.zig",
+   "t": "file:src/engine/ops.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gpu/engine.zig",
+   "t": "file:src/engine/weights.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gpu/engine.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/gpu/engine.zig",
+   "t": "file:src/quant.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hip.zig",
+   "t": "file:src/dynlib.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hip.zig",
+   "t": "file:src/envvar.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/hip.zig",
+   "t": "file:src/format.zig",
    "type": "imports"
   },
   {
@@ -5888,6 +6021,16 @@
    "type": "imports"
   },
   {
+   "s": "file:src/rocm/engine.zig",
+   "t": "file:src/gpu/engine.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/rocm/engine.zig",
+   "t": "file:src/hip.zig",
+   "type": "imports"
+  },
+  {
    "s": "file:src/root.zig",
    "t": "file:src/adaptive.zig",
    "type": "imports"
@@ -5970,6 +6113,11 @@
   {
    "s": "file:src/root.zig",
    "t": "file:src/hf_mapper.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/hip.zig",
    "type": "imports"
   },
   {
@@ -6451,6 +6599,11 @@
   },
   {
    "s": "backend-abstraction",
+   "t": "backend-rocm-engine",
+   "imports": 3
+  },
+  {
+   "s": "backend-abstraction",
    "t": "backend-vulkan",
    "imports": 3
   },
@@ -6501,6 +6654,21 @@
   },
   {
    "s": "backend-cuda-standalone",
+   "t": "backend-cuda-engine",
+   "imports": 1
+  },
+  {
+   "s": "backend-cuda-standalone",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "backend-rocm-engine",
+   "t": "backend-cuda-engine",
+   "imports": 2
+  },
+  {
+   "s": "backend-rocm-engine",
    "t": "format-core",
    "imports": 1
   },
@@ -6652,6 +6820,11 @@
   {
    "s": "engine",
    "t": "backend-cuda-standalone",
+   "imports": 1
+  },
+  {
+   "s": "engine",
+   "t": "backend-rocm-engine",
    "imports": 1
   },
   {

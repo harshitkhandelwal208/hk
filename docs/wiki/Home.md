@@ -29,7 +29,7 @@ This wiki says what each part does, how to use it, and how well it works, includ
 ## What it does not do yet
 
 - It runs Llama, Qwen2 and Qwen3 style dense models. Gemma, Phi, sliding window attention, mixture of experts and vision models are not supported.
-- The GPU backends are CUDA (tensor cores, compute capability 8.0+) and Vulkan (cooperative matrices); a model that does not fit runs its leading layers on the device and the rest on the CPU. Everything was tested on one NVIDIA laptop card only. There is no Metal, ROCm or TPU backend. See [Hardware and Kernels](Hardware-and-Kernels.md).
+- The GPU backends are CUDA (tensor cores, compute capability 8.0+) and Vulkan (cooperative matrices); a model that does not fit runs its leading layers on the device and the rest on the CPU. Everything was tested on one NVIDIA laptop card only. A ROCm backend for AMD (RDNA3+) is written and compiles but has not been run on AMD hardware; there is no Metal or TPU backend. See [Hardware and Kernels](Hardware-and-Kernels.md).
 - The ARM kernels compile and pass the portable tests, but nobody has run them on ARM hardware yet.
 
 ## The research half

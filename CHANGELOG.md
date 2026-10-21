@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **ROCm (AMD GPU) backend, `--backend rocm`: implemented, not run on AMD hardware.** The device code (`src/cuda_device.zig`) now compiles for AMD from the same source: the 17 NVIDIA-only inline-PTX sites moved behind `src/gpu_prims.zig` (thread ids, barrier, shuffles, exp2, round-to-even, 4-way int8 dot product), whose AMD side calls the LLVM `amdgcn` intrinsics. `zig build` produces one `gfx11-generic` HSA code object (RDNA3 and RDNA3.5, wave32; `-Drocm=false` to skip), the HIP runtime is loaded at run time (`src/hip.zig`, no ROCm toolkit needed), and the CUDA engine became the shared GPU engine (`src/gpu/engine.zig`, instantiated for CUDA and HIP). `auto` tries ROCm after Vulkan and CUDA. No matrix-core kernels, graph capture or RDNA1/2/4 objects yet. Verified: 73 kernels compile and the disassembly has the expected instructions; planner and capability tests; the NVIDIA PTX module still exports the same kernels and the CUDA parity tests pass. Not verified: any run on AMD hardware (the parity tests in `tests/test_gpu.zig` skip without a device).
+
 ### Changed
 - Authorship and contact now name me directly (Harshit Khandelwal, `harshitkhandelwal208@gmail.com`) in `SECURITY.md`, `CONTRIBUTING.md`, the README, `LICENSE`, `CITATION.cff` and the Python, npm, NuGet, crates.io and Maven package metadata, replacing "HK AI Research Team" and the `security@hk-ai.org` address. The package metadata reaches the registries with the next release.
 - The README, wiki home, repository description and package description now present hk as one project that is both a fast runtime and a model format with bigger ambitions (zero-copy mmap, 2:4 sparse storage, Net2Net growth, in-file version history, self-learning loops), with a status for each.

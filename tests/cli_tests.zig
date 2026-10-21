@@ -364,7 +364,7 @@ test "backend flag: cpu runs, an unknown value and a missing backend are refused
         const r = try hk(&.{ "run", m.plain, "hi", "--backend", "bogus" }, null);
         defer r.deinit(gpa);
         try std.testing.expect(!r.ok());
-        try std.testing.expect(contains(r.stderr, "takes auto, cpu, vulkan or cuda"));
+        try std.testing.expect(contains(r.stderr, "takes auto, cpu, vulkan, cuda or rocm"));
     }
     {
         // Naming a device means "use it or fail": either it ran on CUDA, or it failed saying CUDA was the problem.
@@ -375,6 +375,16 @@ test "backend flag: cpu runs, an unknown value and a missing backend are refused
             try std.testing.expect(contains(r.stderr, "(CUDA)"));
         } else {
             try std.testing.expect(contains(r.stderr, "CUDA"));
+        }
+    }
+    {
+        // The same for ROCm: on a machine without an AMD GPU it must fail naming ROCm, never run on the CPU.
+        const r = try hk(&.{ "run", m.plain, "hi", "-n", "2", "--temp", "0", "--backend", "rocm" }, null);
+        defer r.deinit(gpa);
+        if (r.ok()) {
+            try std.testing.expect(contains(r.stderr, "(ROCm)"));
+        } else {
+            try std.testing.expect(contains(r.stderr, "ROCm"));
         }
     }
 }

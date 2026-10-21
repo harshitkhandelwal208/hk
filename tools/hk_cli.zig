@@ -1744,7 +1744,7 @@ const usage_gen =
     \\                        stay on the CPU; N at or above the layer count means the whole model. Without
     \\                        N the whole model goes if it fits, otherwise as many layers as do (with --backend
     \\                        or HK_GPU=1). 0 is the CPU.
-    \\      --backend B       auto | cpu | vulkan | cuda (also HK_BACKEND). auto uses a device when the model
+    \\      --backend B       auto | cpu | vulkan | cuda | rocm (also HK_BACKEND). auto uses a device when the model
     \\                        fits and says why when it does not; naming a device fails if it cannot be used.
     \\
 ;
@@ -1756,12 +1756,12 @@ const BackendChoice = hk.backend.select.Choice;
 /// Parses a `--backend` / HK_BACKEND value, or says what is accepted.
 fn parseBackend(text: []const u8, what: []const u8) !BackendChoice {
     return std.meta.stringToEnum(BackendChoice, text) orelse {
-        std.debug.print("Error: {s} takes auto, cpu, vulkan or cuda, not '{s}'\n", .{ what, text });
+        std.debug.print("Error: {s} takes auto, cpu, vulkan, cuda or rocm, not '{s}'\n", .{ what, text });
         return error.BadUsage;
     };
 }
 
-/// GPU settings from `-ngl`, `--backend` and the environment. An explicit device (`--backend vulkan`/`cuda`) means
+/// GPU settings from `-ngl`, `--backend` and the environment. An explicit device (`--backend vulkan`/`cuda`/`rocm`) means
 /// the load must fail if that device cannot be used; `auto` tries a device and quietly stays on the CPU otherwise.
 fn gpuSettings(gpu_layers: ?usize, backend: ?BackendChoice) !struct { gpu: hk.engine.model.GpuMode, backend: BackendChoice, layers: ?usize } {
     var choice = backend;

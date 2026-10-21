@@ -45,7 +45,8 @@ Byte level BPE and SentencePiece vocabularies, checked against llama.cpp on 301,
 | NVIDIA GPU through Vulkan | tested on one card (RTX 3050 Laptop) |
 | AMD, Intel and Apple GPUs through Vulkan | not tested |
 | CUDA | first engine (`--backend cuda`): all 26 CPU weight formats, llama/qwen2/qwen3, one NVIDIA GPU; verified against the CPU on one RTX 3050; early performance (see Hardware and Kernels) |
-| Metal, ROCm, TPU | no backend |
+| ROCm (AMD, RDNA3+) | `--backend rocm`: the same Zig device code compiled for amdgcn and the shared GPU engine; compiles, planner logic unit tested; **not run on AMD hardware** |
+| Metal, TPU | no backend |
 
 See [Hardware and Kernels](Hardware-and-Kernels.md) for how the kernels are chosen and what has and has not been verified.
 
@@ -75,7 +76,7 @@ What a release promises, per the project plan (section 148). Every row says what
 
 - Dense decoders only: llama, mistral without sliding window, qwen2, qwen3. No MoE, sliding window, state-space or multimodal models.
 - One device per run, plus the CPU for layers that do not fit (partial offload runs the *leading* layers on the device; the context is kept, or a whole-model plan halves it but not below 2048 positions before going partial).
-- Run and verified on one Linux x86-64 machine with one NVIDIA GPU. Windows, macOS, ARM, AMD and Intel GPUs, Metal, ROCm and multi-GPU have not been run.
+- Run and verified on one Linux x86-64 machine with one NVIDIA GPU. Windows, macOS, ARM, AMD and Intel GPUs, Metal, ROCm and multi-GPU have not been run (ROCm is implemented and compiles; see above).
 - No signatures: the seal detects accidental damage and an unfinished edit, not tampering (anyone can recompute it).
 - Sealing and verifying are O(file) in time (about 1.7 GiB/s here) at a constant 13 MiB of memory.
 - All speed numbers come from one laptop (Ryzen 7 7445HS, RTX 3050 6 GB Laptop, 6 CPU threads); a different GPU or CPU can reorder the engines. The GPU clocks of this laptop vary by tens of percent between sessions, so only numbers from one interleaved run are compared.

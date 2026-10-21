@@ -10,6 +10,27 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
 
 ## Now
 
+### 00. HK 2.1 (hardware acceleration) in progress — branch `feat/hk-2.1-rocm`, PR open
+
+**Done this session, with what was run:**
+- `src/gpu_prims.zig`: the 17 inline-PTX sites of `src/cuda_device.zig` moved behind per-architecture primitives (NVIDIA PTX unchanged; AMD via LLVM `amdgcn` intrinsics). The NVIDIA module still exports the same 73 (sm_70) / 109 (sm_80) kernels; `zig build test` and `test-cuda` pass on the RTX 3050.
+- `build.zig` (`-Drocm`, default on for Linux/Windows) compiles the device code to a `gfx11-generic` HSA code object (RDNA3/3.5, wave32) and embeds it. Checked: 73 kernels, valid `EM_AMDGPU` ELF, disassembly has `ds_bpermute_b32`, `v_dot4_i32_iu8`, `s_barrier`. `gfx1030` compiles too (no hardware dot4, slower); GCN/CDNA (gfx9) are wave64 and refused.
+- `src/hip.zig` (HIP runtime via dlopen, same surface as `cuda.zig`), `src/gpu/engine.zig` (the old CUDA engine, now `Make(runtime)`), `src/cuda/engine.zig` and `src/rocm/engine.zig` instantiate it. `backend.Device.rocm`, `probeRocm`, `--backend rocm`, caps and planner cases. `auto` order: CUDA (if tensor cores), Vulkan, CUDA, ROCm.
+- Run: unit tests 197 passed + 7 skipped (the ROCm parity tests, no AMD device) at Debug, ReleaseFast, `-Dcpu=x86_64_v3`, `-Dcpu=x86_64`; e2e 26/26; `test-cuda` passes. Mutation-checked: letting `--backend rocm` fall back quietly turns a unit test and the e2e test red.
+- **Never run on AMD hardware.** The machine has a Radeon 740M iGPU (HawkPoint2, gfx1103) but no `vulkan-radeon` (RADV) and no ROCm userspace, `/dev/kfd` exists, the user is not in the `render` group.
+
+**Next concrete commands (need the owner, they use sudo):**
+```
+sudo pacman -S --needed vulkan-radeon hip-runtime-amd hsa-rocr    # RADV for the Vulkan backend on AMD; HIP runtime for ROCm
+sudo usermod -aG render harshit                                   # then log out and in
+HSA_OVERRIDE_GFX_VERSION=11.0.0 zig17 build test -Doptimize=ReleaseFast   # runs the ROCm parity tests; gfx1103 is not an official ROCm target
+```
+Then: fix whatever the first real run shows, benchmark against llama.cpp (HIP and Vulkan on the iGPU), write WMMA (`v_wmma_f16_16x16x16_f16`) kernels for prompts, build `gfx10_3_generic` and `gfx12_generic` objects, add HIP graph capture. Update STATUS row 58 and the wiki from "implemented, not run" only with what actually ran.
+
+**Not started in 2.1:** 2:4 sparse tensor cores (owner: later), Metal (needs Apple hardware), Intel XPU / DirectML (Vulkan covers Intel and Windows GPUs; a D3D12 backend is a separate project), Android (Zig cannot provide bionic; needs the NDK, not installed; `build.zig` has an untested no-`libdl` tweak). Open decision: whether to treat Intel/Windows GPUs as "covered by Vulkan" in the plan.
+
+**Zero dependencies (separate PR #10, `feat/zero-dep-python`):** wheels per platform with `hk` bundled, `torch`/`numpy` optional, plan section 1.6 and 161 (`hk.tensor`). The release workflow's new wheel matrix was not run (needs a tag).
+
 ### 0. HK 2.0.0 is released (2026-10-21)
 
 PR #5 (`feat/hk-2.0-backends`) was merged into `main` by the owner (ruleset bypass; merge commit `030ba32`, tree identical to the tested `16f765e`). Tag `v2.0.0`

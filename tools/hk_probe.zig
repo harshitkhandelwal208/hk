@@ -187,7 +187,7 @@ fn bench(allocator: std.mem.Allocator, io: std.Io, model: *hk.engine.Model, n_pr
     const cuda_profile = cuda_events and isCuda(model);
     if (vkEngine(model)) |g| if (gpu_profile) g.enableProfiling() catch {};
     if (gpu_profile) if (model.gpu) |dev| switch (dev) {
-        .cuda => |e| e.enablePassTiming() catch {},
+        inline .cuda, .rocm => |e| e.enablePassTiming() catch {},
         .vulkan => {},
     };
     if (cuda_profile) hk.cuda.profiling.enable() catch |e| std.debug.print("cuda profiling unavailable: {s}\n", .{@errorName(e)});
@@ -240,7 +240,7 @@ fn bench(allocator: std.mem.Allocator, io: std.Io, model: *hk.engine.Model, n_pr
         printCudaProfile();
     }
     if (gpu_profile) if (model.gpu) |dev| switch (dev) {
-        .cuda => |e| std.debug.print("cuda host time: {d} passes, issuing launches {d:.1} ms, waiting for results {d:.1} ms; gpu time of the passes read back by logits {d:.1} ms\n", .{ e.prof_passes, e.prof_launch_s * 1e3, e.prof_wait_s * 1e3, e.prof_gpu_ms }),
+        inline .cuda, .rocm => |e| std.debug.print("gpu host time: {d} passes, issuing launches {d:.1} ms, waiting for results {d:.1} ms; gpu time of the passes read back by logits {d:.1} ms\n", .{ e.prof_passes, e.prof_launch_s * 1e3, e.prof_wait_s * 1e3, e.prof_gpu_ms }),
         .vulkan => {},
     };
     if (vkEngine(model)) |g| if (g.tq != null) {
@@ -392,7 +392,7 @@ fn vkEngine(model: *hk.engine.Model) ?*hk.gpu.Engine {
     const dev = model.gpu orelse return null;
     return switch (dev) {
         .vulkan => |e| e,
-        .cuda => null,
+        .cuda, .rocm => null,
     };
 }
 

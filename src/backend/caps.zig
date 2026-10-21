@@ -13,11 +13,12 @@ const format = @import("../format.zig");
 const quant = @import("../quant.zig");
 const vk_engine = @import("../vk/engine.zig");
 const cuda_engine = @import("../cuda/engine.zig");
+const rocm_engine = @import("../rocm/engine.zig");
 const weights_mod = @import("../engine/weights.zig");
 
 pub const StorageType = format.StorageType;
 
-pub const Target = enum { cpu, vulkan, cuda };
+pub const Target = enum { cpu, vulkan, cuda, rocm };
 
 pub const Level = enum { none, decode, full };
 
@@ -28,6 +29,8 @@ pub fn weightFormat(target: Target, t: StorageType) Level {
         .vulkan => if (vk_engine.supports(t)) .full else .none,
         // Matrix-vector kernels only: a prompt is processed as repeated decode steps until a batched kernel exists.
         .cuda => if (cuda_engine.supports(t)) .decode else .none,
+        // The same device code as CUDA, compiled for AMD: every format the CPU decodes has a kernel.
+        .rocm => if (rocm_engine.supports(t)) .decode else .none,
     };
 }
 
@@ -36,6 +39,7 @@ pub fn apiName(target: Target) []const u8 {
         .cpu => "CPU",
         .vulkan => "Vulkan",
         .cuda => "CUDA",
+        .rocm => "ROCm",
     };
 }
 
@@ -56,6 +60,12 @@ test "CUDA runs exactly what the CPU decodes, matrix-vector only" {
     inline for (comptime std.enums.values(StorageType)) |t| {
         const want: Level = if (quant.vecdot.supported(t)) .decode else .none;
         try std.testing.expectEqual(want, weightFormat(.cuda, t));
+    }
+}
+
+test "ROCm runs exactly what the CPU decodes, like CUDA" {
+    inline for (comptime std.enums.values(StorageType)) |t| {
+        try std.testing.expectEqual(weightFormat(.cuda, t), weightFormat(.rocm, t));
     }
 }
 

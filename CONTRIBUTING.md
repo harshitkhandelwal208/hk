@@ -59,10 +59,8 @@ For a map of the project and its working rules, start with [AGENTS.md](AGENTS.md
 
 3. **Install the Python package in editable mode**:
    ```bash
-   pip install -e ".[dev]"
-   # or with core dependencies:
-   pip install torch numpy safetensors transformers gguf pytest
-   pip install -e .
+   pip install -e ".[dev]"      # pytest plus the optional torch and numpy layers; hknt itself needs no dependencies
+   export HK_LIB_DIR=$PWD/zig-out/lib HK_BIN_DIR=$PWD/zig-out/bin
    ```
 
 4. **Verify the Python CLI**:

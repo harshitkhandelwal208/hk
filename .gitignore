@@ -60,3 +60,8 @@ test_*.hk
 graphify-out/cache/
 graphify-out/.graphify_*
 graphify-out/*.sig
+
+# Native files staged into the package by the wheel build
+python/hk/bin/
+python/hk/libhk*
+python/hk/hk.dll

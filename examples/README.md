@@ -19,7 +19,7 @@ This directory provides working, zero-friction examples of the HK Neural Tensor 
 
 ```bash
 # Ensure dependencies are installed
-pip install torch numpy gguf safetensors
+pip install "hknt[torch]" gguf safetensors
 
 # Run the end-to-end transcoding & inference demo
 python examples/quickstart_transcode.py

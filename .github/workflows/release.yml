@@ -37,17 +37,23 @@ jobs:
     strategy:
       matrix:
         include:
+          # Linux is built against glibc 2.17 (the manylinux2014 floor), not the runner's newer one, so the
+          # library, the `hk` executable and the wheels tagged manylinux2014 run on older distributions too.
           - os: ubuntu-latest
             target: x86_64-linux
+            zig_target: x86_64-linux-gnu.2.17
             artifact_name: libhk-linux-x86_64.so
           - os: ubuntu-latest
             target: aarch64-linux
+            zig_target: aarch64-linux-gnu.2.17
             artifact_name: libhk-linux-aarch64.so
           - os: windows-latest
             target: x86_64-windows
+            zig_target: x86_64-windows
             artifact_name: hk.dll
           - os: macos-latest
             target: aarch64-macos
+            zig_target: aarch64-macos
             artifact_name: libhk-macos-arm64.dylib
 
     steps:
@@ -57,7 +63,7 @@ jobs:
         uses: ./.github/actions/setup-zig
 
       - name: Build Dynamic Library
-        run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseFast
+        run: zig build -Dtarget=${{ matrix.zig_target }} -Doptimize=ReleaseFast
 
       - name: Prepare Named Artifact
         shell: bash
@@ -89,10 +95,21 @@ jobs:
           name: native-${{ matrix.target }}
           path: zig-out/staged/*
 
+  # One wheel per platform, each holding only that platform's native library and `hk` executable, so `pip install hknt`
+  # gives a working `hk` command with no download step and no dependencies. The wheel is tested by installing it into a
+  # clean virtual environment on a runner of the same platform.
   build-python-wheel:
-    name: Build Multiplatform Python Wheels & Sdist
+    name: Python wheel (${{ matrix.target }})
     needs: [build-native-binaries]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-linux, plat: manylinux2014_x86_64, lib: libhk-linux-x86_64.so, libname: libhk.so, cli: hk-x86_64-linux, cliname: hk }
+          - { os: ubuntu-24.04-arm, target: aarch64-linux, plat: manylinux2014_aarch64, lib: libhk-linux-aarch64.so, libname: libhk.so, cli: hk-aarch64-linux, cliname: hk }
+          - { os: windows-latest, target: x86_64-windows, plat: win_amd64, lib: hk.dll, libname: hk.dll, cli: hk-x86_64-windows.exe, cliname: hk.exe }
+          - { os: macos-latest, target: aarch64-macos, plat: macosx_11_0_arm64, lib: libhk-macos-arm64.dylib, libname: libhk.dylib, cli: hk-aarch64-macos, cliname: hk }
     steps:
       - uses: actions/checkout@v4
 
@@ -102,41 +119,55 @@ jobs:
           python-version: "3.12"
 
       - name: Install Build Tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install build wheel
+        run: python -m pip install --upgrade pip build
 
-      - name: Download All Native Binaries
+      - name: Download this platform's native build
         uses: actions/download-artifact@v4
         with:
-          pattern: native-*
-          merge-multiple: true
-          path: python/hk/
+          name: native-${{ matrix.target }}
+          path: native
 
-      - name: Ensure Generic Native Libs for Runtime
+      - name: Stage the native library and executable inside the package
         shell: bash
         run: |
-          cd python/hk
-          if [ -f libhk-linux-x86_64.so ] && [ ! -f libhk.so ]; then
-            cp libhk-linux-x86_64.so libhk.so
-          fi
-          if [ -f libhk-macos-arm64.dylib ] && [ ! -f libhk.dylib ]; then
-            cp libhk-macos-arm64.dylib libhk.dylib
-          fi
-          ls -la
+          mkdir -p python/hk/bin
+          cp "native/${{ matrix.lib }}" "python/hk/${{ matrix.libname }}"
+          cp "native/${{ matrix.cli }}" "python/hk/bin/${{ matrix.cliname }}"
+          chmod +x "python/hk/bin/${{ matrix.cliname }}"
 
-      - name: Build Source Distribution and Wheel
-        run: python -m build
+      - name: Build the wheel
+        run: python -m build --wheel -C--build-option=--plat-name=${{ matrix.plat }}
 
-      - name: Upload Python Artifacts
+      - name: Test the wheel in a clean environment
+        shell: bash
+        run: python tests/wheel_smoke.py dist/*.whl
+
+      - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: python-dist
-          path: dist/*
+          name: python-dist-${{ matrix.target }}
+          path: dist/*.whl
+
+  build-sdist:
+    name: Python source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --sdist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist-sdist
+          path: dist/*.tar.gz
 
   create-github-release:
     name: Create GitHub Release
-    needs: [build-native-binaries, build-python-wheel]
+    needs: [build-native-binaries, build-python-wheel, build-sdist]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -165,7 +196,7 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI (pip)
-    needs: [build-python-wheel]
+    needs: [build-python-wheel, build-sdist]
     runs-on: ubuntu-latest
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_pypi)
     permissions:
@@ -176,7 +207,8 @@ jobs:
       - name: Download Python Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: python-dist
+          pattern: python-dist-*
+          merge-multiple: true
           path: dist/
 
       - name: Publish package distributions to PyPI

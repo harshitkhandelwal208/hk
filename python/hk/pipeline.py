@@ -3,6 +3,8 @@ HK Pipeline
 Unified high-level task abstraction for inference pipelines.
 """
 
+import sys
+import types
 from typing import Any, Callable, Dict, List, Optional, Union
 from pathlib import Path
 import torch
@@ -188,3 +190,15 @@ def pipeline(
         )
     else:
         raise ValueError(f"Unsupported pipeline task: {task}")
+
+
+class _CallableModule(types.ModuleType):
+    """`hk.pipeline(...)` is the factory function, but `hk.pipeline` is also this submodule. Python rebinds the package
+    attribute to the module whenever the submodule is first imported, which can happen after the function was bound,
+    so the module forwards calls to the function and both spellings work in any import order."""
+
+    def __call__(self, *args, **kwargs):
+        return pipeline(*args, **kwargs)
+
+
+sys.modules[__name__].__class__ = _CallableModule

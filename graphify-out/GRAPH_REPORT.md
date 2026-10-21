@@ -1,47 +1,47 @@
 # Graph Report - hk  (2026-10-21)
 
 ## Corpus Check
-- 260 files · ~382,618 words
+- 264 files · ~386,846 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 138 file(s) not represented in the graph (top: .spv 80, .bin 32, .comp 16)
 
 ## Summary
-- 5742 nodes · 11135 edges · 309 communities (233 shown, 76 thin omitted)
-- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 672 edges (avg confidence: 0.91)
+- 5811 nodes · 11055 edges · 301 communities (236 shown, 65 thin omitted)
+- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS · INFERRED: 680 edges (avg confidence: 0.91)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `cf4ca260`
+- Built from commit: `6033eadd`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- numpy.py
-- model
+- native.py
+- subprocess
 - c_api.zig
 - save_file
 - ensureDriver
-- convert_hf_checkpoint
+- .test_architecture_conversion_tables_and_mappings
 - vecdot.zig
-- std
+- root.zig
 - hk_cli.zig
 - StorageType
 - HKTokenizer
 - c.zig
-- modeling.py
+- StorageType
 - StorageType
 - StorageType
 - StorageType
 - StorageType
 - lib.rs
 - HKConfig
-- HKLinear
+- HKForHandwritingRecognition
 - attention.zig
 - pull.zig
 - self_training.py
 - ContextWindowManager
 - Added & Enhanced
-- composite.py
+- pipeline
 - abi_ops.zig
 - raw.py
 - DllImport
@@ -55,13 +55,13 @@
 - HkReaderOpaque
 - jinja.zig
 - GGMLType
-- prune_wanda
-- HKDistilBertModel
+- hub/hf.zig
+- composite.py
 - gemm.zig
 - server/api.zig
 - Engine
 - Engine
-- cli.py
+- 7. Misc
 - blocks.zig
 - Cat
 - c_int
@@ -75,13 +75,13 @@
 - Scheduler
 - HkModel.cs
 - HkTensor
-- weights.zig
+- std
 - test_engine.zig
 - HKReader
 - Tokenizer
 - HkTensor
 - HkStorageType
-- os
+- torch.py
 - SelfTrainingPipeline
 - research.zig
 - HkTensor<'a>
@@ -100,8 +100,8 @@
 - MetadataMap
 - vk.zig
 - Tensor
+- LoRAAdapter
 - arrays.zig
-- hf_tokenizer.zig
 - pool.zig
 - cli_hub.zig
 - TileLayout
@@ -124,14 +124,14 @@
 - Hub
 - HkModel
 - Parser
-- time
+- numpy.py
 - __global__
 - StageModality
 - regex.zig
 - _Sidebar.md
 - hk_test.go
 - hook
-- HKFile
+- convert_hf_checkpoint
 - HttpSource
 - Expr
 - ValueType
@@ -144,7 +144,7 @@
 - HkWriter
 - compilerOptions
 - adaptive/__init__.py
-- hk/__init__.py
+- Tensor
 - transaction.zig
 - Now
 - toDevicePtr
@@ -153,14 +153,14 @@
 - CONTEXT.md
 - PipelineContext
 - AppendixType
-- test_phase3_tensor_transformations
-- Path
+- hf_mapper.py
+- RemoteHKFile
 - BufferWriter
 - Node
 - convert/gguf.zig
 - growth.zig
 - tiny_model.zig
-- test_expansion_rigorous.py
+- _Lazy
 - test_quant.zig
 - .Main
 - TileLayout
@@ -193,31 +193,32 @@
 - SparsityType
 - HK knowledge graph
 - AppendixType
+- setup.py
 - Cpu
 - TokKind
 - AppendixEntryType
 - MetadataValueType
 - SparsityType
 - MetadataValue
-- sampler.zig
+- scheduler.zig
 - TensorTOC
 - 150. Project Milestones
 - BufReader
 - CLI Reference
-- load_file
+- src/gguf.zig
 - hk_writer_add_tensor
 - TruncationStrategy
-- CpuVendor
+- platform.zig
 - Fixture
 - cli_tests.zig
 - Hk.csproj
 - Contributing to HK Neural Tensor Framework
 - Storage, Sparsity, Sharding and Metadata Editing
-- tokenizer.zig
+- Developer Experience & Multilingual Ecosystem
 - StreamWriter
 - .alloc
 - RangeRequestHandler
-- gen_quant_fixtures.py
+- matmul.zig
 - HkAppendixEntry
 - Error
 - hk
@@ -228,13 +229,13 @@
 - gen_unicode_tables.zig
 - Benchmark 2026-10-20T21:30:51
 - Loader
-- .matSet
+- inspect_model_file
 - build.sh
 - hk_close
 - hk_engine_forward
 - hk_engine_load_from_file
 - hknt
-- TensorSlice
+- [2.0.0] - 2026-10-21 - Unified runtime: backend abstraction, CUDA engine with tensor cores, partial offload, container integrity
 - com.hk:hk-tensor
 - github.com/harshitkhandelwal208/hk/bindings/go
 - hknt
@@ -244,14 +245,14 @@
 - Getting Started
 - Hardware and Kernels
 - hkntf: TypeScript / JavaScript reader and writer for `.hk` files
+- __getattr__
 - Error
-- appendix.zig
 - 1. Non-Negotiable Architecture Principles
 - 7. Memory Mapping
 - Documentation Index (`docs/wiki/`)
 - Design
 - In-Container Version Lineage (Appendix)
-- safe_open
+- TestExpandedFeatures
 - Reporting a Vulnerability
 - Act
 - hk
@@ -261,8 +262,8 @@
 - hk
 - Raw Storage and Payload Alignment
 - Device
-- Arch
-- .init
+- wheel_smoke.py
+- 161. hk.tensor — HK's Own Tensor and Autograd Library
 - 149. Release Tiers
 - 54. Multimodal Support
 - 9. Tensor Core and Tensor Optimization Layer
@@ -275,37 +276,31 @@
 - KvCache
 - 10. SIMD Architecture Matrix
 - hk_appendix_append
-- pretok.zig
+- Weights
 - Regex
 - CudaError
-- Error
-- .fromMetadata
-- TokenType
+- SelectError
+- nf4.zig
 - launchKernel2D
 - integrity.zig
 - Kind
 - LoadError
 - SafeTensorsReader
-- JsonError
+- Level
 - ActKind
 - Benchmark 2026-10-20T17:09:56
-- Kind
+- Target
 - Progress
-- NativeSandbox
-- Error
+- GpuMode
+- Kind
 - DecodeError
 - decodeBlocks
 - Benchmark 2026-10-20T20:13:23
 - Benchmark 2026-10-20T22:23:28
 - HK — Context (start here)
-- Error
-- Error
+- AppendixEntry
 - AGENTS.md — working agreement for any coding agent on HK
-- adaptive.zig
-- Kind
 - test_openai_compat.py
-- cores.zig
-- HKModel
 - source.zig
 - perplexity.py
 - HK Framework Examples
@@ -315,12 +310,12 @@
 - cuda/engine.zig
 
 ## God Nodes (most connected - your core abstractions)
-1. `HKConfig` - 79 edges
+1. `HKConfig` - 78 edges
 2. `HkModel` - 64 edges
-3. `is_native_available()` - 62 edges
+3. `is_native_available()` - 61 edges
 4. `StorageType` - 58 edges
-5. `NativeMethods` - 57 edges
-6. `HKForCausalLM` - 57 edges
+5. `HKForCausalLM` - 58 edges
+6. `NativeMethods` - 57 edges
 7. `StorageType` - 56 edges
 8. `StorageType` - 56 edges
 9. `StorageType` - 55 edges
@@ -341,35 +336,35 @@
 ## Import Cycles
 - None detected.
 
-## Communities (309 total, 76 thin omitted)
+## Communities (301 total, 65 thin omitted)
 
-### Community 0 - "numpy.py"
-Cohesion: 0.04
-Nodes (66): run_quantization_benchmarks(), native_context_truncate(), native_dequantize_q2_k(), native_dequantize_q3_k(), native_dequantize_q4_0(), native_dequantize_q4_k(), native_dequantize_q5_k(), native_dequantize_q6_k() (+58 more)
+### Community 0 - "native.py"
+Cohesion: 0.02
+Nodes (88): run_gemv_benchmarks(), run_quantization_benchmarks(), convert_gguf_to_hk(), add_layernorm_offset(), permute_hf_to_gguf_rope(), split_fused_qkv(), sub_layernorm_offset(), unpack_moe_experts() (+80 more)
+
+### Community 1 - "subprocess"
+Cohesion: 0.21
+Nodes (7): hk_file(), llama_gguf(), model(), run_child(), test_import_hk_needs_nothing(), test_optional_features_explain_what_to_install(), test_pyproject_declares_no_required_dependencies()
 
 ### Community 2 - "c_api.zig"
 Cohesion: 0.02
 Nodes (7): C_AppendixEntry, C_HardwareCapabilities, C_TensorInfo, EngineWrapper, ReaderWrapper, TokenizerWrapper, WriterWrapper
 
 ### Community 3 - "save_file"
-Cohesion: 0.23
-Nodes (4): NativeHKWriter, save_file(), save_raw(), save_file()
+Cohesion: 0.05
+Nodes (24): NativeHKWriter, load_file(), save_file(), save_raw(), HKFile, HKModel, load_file(), load_model() (+16 more)
 
 ### Community 4 - "ensureDriver"
 Cohesion: 0.11
 Nodes (11): copyToDevice(), CudaEvent, CudaGraph, CudaGraphExec, CudaStream, ensureDriver(), freeMemBytes(), hasTensorCores() (+3 more)
 
-### Community 5 - "convert_hf_checkpoint"
-Cohesion: 0.07
-Nodes (13): benchmark_tensor_mapping(), format_arch_key(), HKKeys, ModelArchitecture, PreTokenizerType, RoPEScalingType, TokenType, convert_hf_checkpoint() (+5 more)
-
 ### Community 6 - "vecdot.zig"
 Cohesion: 0.16
-Nodes (38): blk(), BlockA8, bsumsOf(), dotBF16Row(), dotCanonK(), dotCanonLegacy(), dotF16Row(), dotF32() (+30 more)
+Nodes (39): blk(), BlockA8, bsumsOf(), dotBF16Row(), dotCanonK(), dotCanonLegacy(), dotF16Row(), dotF32() (+31 more)
 
-### Community 7 - "std"
-Cohesion: 0.06
-Nodes (28): dtypeName(), elemBytes(), exportFile(), TensorSpec, ExpansionDiagnosis, calculateGGMLTensorSize(), convertGGUFToHK(), exportHKToGGUF() (+20 more)
+### Community 7 - "root.zig"
+Cohesion: 0.07
+Nodes (9): expandVocabEmbeddings(), GrowthGovernor, ExpansionDiagnosis, NativeSandbox, SandboxResult, getTileDims(), packTilesF32(), TileDims (+1 more)
 
 ### Community 8 - "hk_cli.zig"
 Cohesion: 0.08
@@ -380,16 +375,16 @@ Cohesion: 0.04
 Nodes (54): NF4, StorageType, BF16, Bool, DQ12, DQ4, DQ6, DQ8 (+46 more)
 
 ### Community 10 - "HKTokenizer"
-Cohesion: 0.07
-Nodes (9): Deep Tokenizer Ingestion & Zero-Dependency Decoders, HKTokenizer, parse_sentencepiece_model(), parse_tekken_json(), _render_chat_template_fallback(), test_tokenizer_bpe_cache_and_streaming(), test_phase5_tokenizer_metadata_and_fim(), encode_varint() (+1 more)
+Cohesion: 0.06
+Nodes (11): Deep Tokenizer Ingestion & Zero-Dependency Decoders, TokenType, HKTokenizer, parse_sentencepiece_model(), parse_tekken_json(), _render_chat_template_fallback(), test_tokenizer_bpe_cache_and_streaming(), test_phase5_tokenizer_metadata_and_fim() (+3 more)
 
 ### Community 11 - "c.zig"
 Cohesion: 0.03
 Nodes (58): struct_VkAllocationCallbacks, struct_VkApplicationInfo, struct_VkBufferCopy, struct_VkBufferCreateInfo, struct_VkBufferMemoryBarrier, struct_VkCommandBufferAllocateInfo, struct_VkCommandBufferBeginInfo, struct_VkCommandBufferInheritanceInfo (+50 more)
 
-### Community 12 - "modeling.py"
-Cohesion: 0.06
-Nodes (18): benchmark_growth_governor(), expand_vocab(), net2wider_swiglu(), convert_safetensors_to_hk(), is_native_available(), _library_names(), _load_native(), native_appendix_append() (+10 more)
+### Community 12 - "StorageType"
+Cohesion: 0.11
+Nodes (9): main(), StorageType, export_hk_to_gguf(), HKQuantizedLinear, quantize_q4_0(), quantize_q8_0(), create_synthetic_gguf_file(), test_phase1_gguf_ingestion_and_roundtrip() (+1 more)
 
 ### Community 13 - "StorageType"
 Cohesion: 0.04
@@ -412,40 +407,40 @@ Cohesion: 0.05
 Nodes (50): APPLE_SILICON_ALIGNMENT_BYTES, DEFAULT_ALIGNMENT_BYTES, detect_hardware(), DIRECT_DMA_ALIGNMENT_BYTES, dot_bf16(), dot_f16(), dot_f32(), dot_int8() (+42 more)
 
 ### Community 18 - "HKConfig"
-Cohesion: 0.08
-Nodes (19): HKConfig, HKForCausalLM, pipeline(), test_dynamic_device_cross_boundary_forward_and_generate(), test_pipeline_device_auto(), test_to_dynamic_offload_helper(), test_async_eval_and_optimizer_preservation(), test_autoconfig_roundtrip() (+11 more)
+Cohesion: 0.06
+Nodes (30): Python, Checkpoints and the appendix, Pretraining and sharding, Training and Fine-Tuning (`HKTrainer`), HKConfig, HKForCausalLM, HKTrainer, _worker() (+22 more)
 
 ### Community 20 - "attention.zig"
 Cohesion: 0.36
 Nodes (6): checkAttention(), merge(), Partials, referenceAttention(), run(), testConfig()
 
 ### Community 21 - "pull.zig"
-Cohesion: 0.06
-Nodes (37): Choice, containsFold(), encodePath(), File, isProjector(), isSplitGguf(), Kind, gguf (+29 more)
+Cohesion: 0.17
+Nodes (14): copyHk(), Diag, findFile(), Options, outputName(), pull(), pullSafetensors(), repoDir() (+6 more)
 
 ### Community 22 - "self_training.py"
 Cohesion: 0.07
-Nodes (14): [1.0.3] - 2026-09-16 - Cross-Platform Truncation & CodeSandbox Isolation Fixes, Fixed & Enhanced, Caveats, `CodeSandbox` limits, Pieces, Self-Training Toolkit (`hk.adaptive`), Using the pipeline, CodeSandbox (+6 more)
+Nodes (16): [1.0.3] - 2026-09-16 - Cross-Platform Truncation & CodeSandbox Isolation Fixes, Fixed & Enhanced, Caveats, `CodeSandbox` limits, Pieces, Self-Training Toolkit (`hk.adaptive`), Using the pipeline, CodeSandbox (+8 more)
 
 ### Community 23 - "ContextWindowManager"
-Cohesion: 0.05
-Nodes (5): ContextWindowManager, PipelineContext, PipelineStage, UniversalPipeline, TestUniversalPipeline
+Cohesion: 0.06
+Nodes (5): CompositePipeline, ContextWindowManager, PipelineContext, PipelineStage, UniversalPipeline
 
 ### Community 24 - "Added & Enhanced"
 Cohesion: 0.06
-Nodes (12): Added & Enhanced, 7. Misc, benchmark_model(), compare_models(), AutoDeviceDispatcher, DynamicOffloadPlanner, DynamicOOMGuard, HardwareMemoryInspector (+4 more)
+Nodes (9): Added & Enhanced, HKPreTrainedModel, DeviceMemoryInfo, DynamicOffloadPlanner, HardwareMemoryInspector, LayerMemoryEstimator, test_dynamic_offload_planner_cpu_fallback(), test_hardware_inspection() (+1 more)
 
-### Community 25 - "composite.py"
-Cohesion: 0.12
-Nodes (13): Developer Experience & Multilingual Ecosystem, Models and config, CompositePipeline, AutoConfig, AutoModel, HKForHandwritingRecognition, HKForSequenceClassification, HKPreTrainedModel (+5 more)
+### Community 25 - "pipeline"
+Cohesion: 0.14
+Nodes (7): BasePipeline, _CallableModule, HandwritingRecognitionPipeline, pipeline(), SequenceClassificationPipeline, TextGenerationPipeline, test_pipeline_device_auto()
 
 ### Community 26 - "abi_ops.zig"
 Cohesion: 0.15
 Nodes (20): dotBF16(), dotF16(), dotF32(), Error, BadShape, OutOfMemory, PoolFailed, UnsupportedType (+12 more)
 
 ### Community 27 - "raw.py"
-Cohesion: 0.05
-Nodes (22): Core Container & Hardware Acceleration, 3. Raw store (`hk.raw`), Python, C_HardwareCapabilities, C_TensorInfo, native_detect_hardware(), native_get_optimal_alignment(), NativeHKReader (+14 more)
+Cohesion: 0.06
+Nodes (23): get_pipeline_model(), run_pipeline_benchmark(), Core Container & Hardware Acceleration, 3. Raw store (`hk.raw`), Python, C_HardwareCapabilities, native_detect_hardware(), native_get_optimal_alignment() (+15 more)
 
 ### Community 29 - "HkModel"
 Cohesion: 0.09
@@ -457,7 +452,7 @@ Nodes (10): Dict, eqValue(), fromJson(), newDict(), newList(), render(), Rendere
 
 ### Community 32 - "appendix.py"
 Cohesion: 0.11
-Nodes (20): Container integrity and crash safety (plan §4, §5), A. DONE, COMMITTED (`a1ee4eb`, branch `feat/container-integrity`): container integrity + crash-safe edits (plan §4, §5; milestone 2.4 items, landed early), Versions, Python, 6. Adaptive tooling (`hk.adaptive`), append_record(), AppendixMetrics, AppendixRecord (+12 more)
+Nodes (24): Container integrity and crash safety (plan §4, §5), Versions, Python, 6. Adaptive tooling (`hk.adaptive`), append_record(), AppendixEntryType, AppendixFlags, AppendixMetrics (+16 more)
 
 ### Community 33 - "dequant.zig"
 Cohesion: 0.17
@@ -487,13 +482,13 @@ Nodes (27): Branch, Diag, DictItem, Error, OutOfMemory, RenderError, SyntaxError
 Cohesion: 0.06
 Nodes (35): GGMLType, bf16, f16, f32, f64, i16, i32, i64 (+27 more)
 
-### Community 40 - "prune_wanda"
-Cohesion: 0.14
-Nodes (9): fine_tune_recovery(), _get_prunable_layers(), LayerSparsitySchedule, prune_block_sparse(), prune_structured_2_4(), prune_structured_l2(), prune_unstructured_magnitude(), prune_wanda() (+1 more)
+### Community 40 - "hub/hf.zig"
+Cohesion: 0.18
+Nodes (14): Choice, containsFold(), encodePath(), File, isProjector(), isSplitGguf(), kindOf(), modelInfo() (+6 more)
 
-### Community 41 - "HKDistilBertModel"
-Cohesion: 0.13
-Nodes (5): Models and architectures (§46–§55), HKDistilBertModel, HKWhisperModel, ModelOutput, TestHKNewFeatures
+### Community 41 - "composite.py"
+Cohesion: 0.08
+Nodes (6): Models and architectures (§46–§55), HKDistilBertModel, HKWhisperModel, HKLinear, HKTransformerBlock, ModelOutput
 
 ### Community 42 - "gemm.zig"
 Cohesion: 0.14
@@ -503,9 +498,17 @@ Nodes (25): Args, bcast4(), bcastI(), dotSigned(), group(), kernelFloat(), kerne
 Cohesion: 0.17
 Nodes (29): collect(), Collected, Config, connection(), encodePrompt(), finishName(), getObj(), handle() (+21 more)
 
-### Community 46 - "cli.py"
-Cohesion: 0.23
-Nodes (5): _candidate_names(), _find_native_cli(), main(), launch_gui(), main()
+### Community 44 - "Engine"
+Cohesion: 0.09
+Nodes (7): Engine, mmvqCode(), mmvqSupported(), nowSecs(), Options, runBatchKernel(), spirv()
+
+### Community 45 - "Engine"
+Cohesion: 0.15
+Nodes (3): Engine, Made, nowSecs()
+
+### Community 46 - "7. Misc"
+Cohesion: 0.11
+Nodes (6): 7. Misc, benchmark_model(), compare_models(), launch_gui(), main(), DynamicOOMGuard
 
 ### Community 47 - "blocks.zig"
 Cohesion: 0.06
@@ -520,20 +523,16 @@ Cohesion: 0.13
 Nodes (15): hk_appendix_rollback(), hk_dequantize_f32(), hk_metadata_patch_in_place(), hk_writer_add_metadata_bool(), hk_writer_add_metadata_float(), hk_writer_add_metadata_int(), hk_writer_add_metadata_string(), hk_writer_add_tensor() (+7 more)
 
 ### Community 50 - "[1.0.0] - 2026-09-14 - The Unified Release"
-Cohesion: 0.10
-Nodes (20): [1.0.0] - 2026-09-14 - The Unified Release, [1.0.1] - 2026-09-15 - Documentation Overhaul & CI Reliability, [1.0.2] - 2026-09-16 - Training Robustness, True QLoRA & Cryptographic Lineage Hardening, [1.0.4] - 2026-09-16 - Automated Dynamic GPU/CPU Offloading Engine & Framework Optimizations, [1.1.0] - 2026-09-21 - Native SIMD Kernel Optimizations, Zero-Skip GEMM, RoPE Angle Caching & Quantization LUT, [1.1.1] - 2026-10-05 - Engine rewrite: portable kernels, tiled prefill, Vulkan backend, Zig tooling, verified language bindings, Bug Fixes, Changelog (+12 more)
-
-### Community 51 - "hk.go"
-Cohesion: 0.07
-Nodes (4): DetectHardware(), AppendixEntry, AppendixType, HardwareCaps
+Cohesion: 0.08
+Nodes (24): [1.0.0] - 2026-09-14 - The Unified Release, [1.0.1] - 2026-09-15 - Documentation Overhaul & CI Reliability, [1.0.2] - 2026-09-16 - Training Robustness, True QLoRA & Cryptographic Lineage Hardening, [1.0.4] - 2026-09-16 - Automated Dynamic GPU/CPU Offloading Engine & Framework Optimizations, [1.1.0] - 2026-09-21 - Native SIMD Kernel Optimizations, Zero-Skip GEMM, RoPE Angle Caching & Quantization LUT, [1.1.1] - 2026-10-05 - Engine rewrite: portable kernels, tiled prefill, Vulkan backend, Zig tooling, verified language bindings, Bug Fixes, Changed (+16 more)
 
 ### Community 52 - "NativeHKEngine"
-Cohesion: 0.09
-Nodes (11): Tooling, SDKs, distribution (§85–§104, §119–§125, §143–§148), 1. Top level (`hk`), Native inference, Tokenizers, NativeHKEngine, NativeHKTokenizer, test_native_inference_engine(), test_native_tokenizer_roundtrip() (+3 more)
+Cohesion: 0.06
+Nodes (17): format_table(), main(), run_container_load_benchmarks(), run_sparsity_benchmarks(), run_tokenizer_benchmarks(), 2. Tensor files (`hk.torch`, `hk.numpy`, JAX/Flax), Native inference, Python API Reference (+9 more)
 
 ### Community 53 - "kernels_impl.zig"
-Cohesion: 0.07
-Nodes (16): Job, loadK(), processRun(), task(), tileChunk(), Bias, Cand, Params (+8 more)
+Cohesion: 0.15
+Nodes (5): Job, loadK(), processRun(), task(), tileChunk()
 
 ### Community 54 - "HkModel"
 Cohesion: 0.09
@@ -543,6 +542,10 @@ Nodes (11): CAppendixEntry, HkModel, AppendixCount, FileAlignment, IsRawStorage,
 Cohesion: 0.08
 Nodes (25): author, bugs, url, description, devDependencies, typescript, exports, files (+17 more)
 
+### Community 57 - "Scheduler"
+Cohesion: 0.16
+Nodes (3): Request, Scheduler, Slot
+
 ### Community 58 - "HkModel.cs"
 Cohesion: 0.09
 Nodes (17): HkConstants, Hk, HkAppendixEntry, HkAppendixType, CodeEval, DeltaPatch, KVCacheSink, LoRAAdapter (+9 more)
@@ -551,44 +554,48 @@ Nodes (17): HkConstants, Hk, HkAppendixEntry, HkAppendixType, CodeEval, DeltaPat
 Cohesion: 0.09
 Nodes (12): CTensorInfo, HkTensor, BlockSize, ElementCount, IsRaw, Name, Ndim, Shape (+4 more)
 
-### Community 60 - "weights.zig"
-Cohesion: 0.05
-Nodes (38): Kind, cuda, vulkan, partialNeed(), probeCuda(), probeVulkan(), firstUnsupported(), Level (+30 more)
+### Community 60 - "std"
+Cohesion: 0.12
+Nodes (15): Kind, cuda, vulkan, partialNeed(), probeCuda(), probeVulkan(), firstUnsupported(), weightFormat() (+7 more)
 
 ### Community 61 - "test_engine.zig"
 Cohesion: 0.36
 Nodes (4): addMat(), addVec(), Fixture, writeTiny()
 
 ### Community 62 - "HKReader"
-Cohesion: 0.12
-Nodes (4): checkedEnd(), HKReader, validateHeaderLayout(), validateTensorRanges()
+Cohesion: 0.11
+Nodes (7): dtypeName(), elemBytes(), exportFile(), checkedEnd(), HKReader, validateHeaderLayout(), validateTensorRanges()
+
+### Community 63 - "Tokenizer"
+Cohesion: 0.05
+Nodes (29): Bigram, Diag, EncodeOptions, Error, BadPattern, BadVocabulary, MissingVocabulary, OutOfMemory (+21 more)
 
 ### Community 65 - "HkStorageType"
 Cohesion: 0.09
 Nodes (23): HkStorageType, BF16, BOOL, DQ12, DQ4, DQ6, DQ8, DQT (+15 more)
 
-### Community 66 - "os"
+### Community 66 - "torch.py"
 Cohesion: 0.04
-Nodes (26): get_pipeline_model(), run_pipeline_benchmark(), Conversion, main(), convert_gguf_to_hk(), export_hk_to_gguf(), GGUFReaderLight, native_convert_gguf() (+18 more)
+Nodes (28): expand_vocab(), net2wider_swiglu(), _candidate_names(), _find_native_cli(), main(), align_forward(), SparsityType, TileLayout (+20 more)
 
 ### Community 67 - "SelfTrainingPipeline"
 Cohesion: 0.07
 Nodes (12): Research stack (§28–§40, §105–§118), ExpansionDiagnosis, ExpansionEvaluator, GrowthGovernor, SelfTrainingCurriculum, SelfTrainingPipeline, test_growth_governor_exhaustive_budgeting(), main() (+4 more)
 
 ### Community 68 - "research.zig"
-Cohesion: 0.09
-Nodes (18): dequantizeBlockNF4(), dequantizeWithResidual(), findClosestNF4(), quantizeBlockNF4(), dequantizeBlockNVFP4(), dequantizeFP8_E4M3(), dotProductInt8F32(), findClosestIQ4NL() (+10 more)
+Cohesion: 0.11
+Nodes (14): dequantizeBlockNVFP4(), dequantizeFP8_E4M3(), dotProductInt8F32(), findClosestIQ4NL(), findClosestNF4(), fusedGemvDQ8(), fusedGemvDQ8Worker(), fusedGemvNF4() (+6 more)
 
 ### Community 69 - "HkTensor<'a>"
 Cohesion: 0.14
 Nodes (6): hk_get_raw_buffer(), hk_get_tensor_data(), hk_get_tensor_raw_ptr(), hk_get_tensor_residual(), hk_get_tensor_scales(), HkTensor<'a>
 
 ### Community 70 - "HKTrainer"
-Cohesion: 0.06
-Nodes (14): Added & Enhanced, 5. Training (`hk.trainer`), Arguments (`HKTrainingArguments`), Checkpoints and the appendix, Pretraining and sharding, Training and Fine-Tuning (`HKTrainer`), What `HKTrainer` does, AppendixManager (+6 more)
+Cohesion: 0.09
+Nodes (7): Added & Enhanced, 5. Training (`hk.trainer`), Arguments (`HKTrainingArguments`), AppendixManager, replace_with_qlora(), HKTrainingArguments, test_training_arguments_and_lineage_verification()
 
 ### Community 71 - "hk.hpp"
-Cohesion: 0.16
+Cohesion: 0.13
 Nodes (10): dot(), forward_rmsnorm(), forward_silu(), forward_swiglu(), fused_gemv_dq8(), fused_gemv_nf4(), gemm(), gemv() (+2 more)
 
 ### Community 72 - "MASTER_PLAN.md"
@@ -596,7 +603,7 @@ Cohesion: 0.01
 Nodes (152): 0. Vision, 100. Security, 101. Fuzzing, 102. Correctness Infrastructure, 103. Numerical Stability, 104. Model Quality Validation, 105. Training Research Evaluation, 106. Research: Adaptive Growth (+144 more)
 
 ### Community 74 - "flax.py"
-Cohesion: 0.14
+Cohesion: 0.13
 Nodes (8): _check_flax(), _flatten_flax_params(), load_model(), save_model(), _unflatten_flax_params(), _check_jax(), load_file(), save_file()
 
 ### Community 75 - "HkAppendixEntry"
@@ -612,8 +619,8 @@ Cohesion: 0.13
 Nodes (4): SparsityType, StorageType, Tensor, TileLayout
 
 ### Community 78 - "Context"
-Cohesion: 0.16
-Nodes (3): check(), Context, sharedInstance()
+Cohesion: 0.15
+Nodes (4): check(), Context, makeApiVersion(), sharedInstance()
 
 ### Community 80 - "gen_graph.py"
 Cohesion: 0.25
@@ -628,24 +635,24 @@ Cohesion: 0.20
 Nodes (3): MetadataMap, patchFileMetadataInPlace(), patchMetadataUnsealed()
 
 ### Community 83 - "vk.zig"
-Cohesion: 0.13
-Nodes (11): Binding, Buffer, Caps, Fns, makeApiVersion(), MemKind, device, readback (+3 more)
+Cohesion: 0.08
+Nodes (23): linuxCores(), macCores(), physicalCores(), readSmall(), windowsCores(), Binding, Buffer, Caps (+15 more)
 
 ### Community 84 - "Tensor"
-Cohesion: 0.09
-Nodes (16): Fixes, 1. File layout, 3. Metadata section, 4. Tensor table of contents, 5. Storage types (`storage_type`), 6. Tile layouts (`tile_layout`), 7. Sparsity types (`sparsity_type`), 8. Appendix region (+8 more)
+Cohesion: 0.10
+Nodes (15): 1. File layout, 3. Metadata section, 4. Tensor table of contents, 5. Storage types (`storage_type`), 6. Tile layouts (`tile_layout`), 7. Sparsity types (`sparsity_type`), 8. Appendix region, 9. Reading a file (+7 more)
 
-### Community 85 - "arrays.zig"
-Cohesion: 0.17
-Nodes (7): checkHeader(), F32Array, fixedBlob(), fromJson(), I32Array, StringArray, StringArrayBuilder
+### Community 85 - "LoRAAdapter"
+Cohesion: 0.12
+Nodes (3): What `HKTrainer` does, LoRAAdapter, SPINLoss
 
-### Community 86 - "hf_tokenizer.zig"
-Cohesion: 0.27
-Nodes (10): Ctx, Diag, Entry, parse(), parseAdded(), Parsed, parseModel(), parseNormalizer() (+2 more)
+### Community 86 - "arrays.zig"
+Cohesion: 0.06
+Nodes (36): checkHeader(), Error, Malformed, WrongKind, F32Array, fixedBlob(), fromJson(), I32Array (+28 more)
 
 ### Community 87 - "pool.zig"
-Cohesion: 0.11
-Nodes (12): forPieces(), Job, Part, run(), runParts(), task(), tiledTask(), Pool (+4 more)
+Cohesion: 0.13
+Nodes (8): Api, QkRopeArgs, RowsArgs, Pool, prefetchStripe(), runChunks(), Shared, worker()
 
 ### Community 88 - "cli_hub.zig"
 Cohesion: 0.27
@@ -656,12 +663,12 @@ Cohesion: 0.11
 Nodes (16): SparsityType, Bitmask, BSR, CSR, None, PhysicalPruned, Structured2_4, TileLayout (+8 more)
 
 ### Community 91 - "Model"
-Cohesion: 0.12
+Cohesion: 0.13
 Nodes (6): Integrity, Invalid, LegacyUnsealed, Valid, Model, m_reader
 
 ### Community 92 - "vk/engine.zig"
-Cohesion: 0.13
-Nodes (13): AttnPush, AttnSplitPush, CountPush, DevMat, EmbedPush, Layer, MmPush, MmvPush (+5 more)
+Cohesion: 0.08
+Nodes (23): AttnPush, AttnSplitPush, CountPush, DevMat, EmbedPush, Kind, add, attn (+15 more)
 
 ### Community 93 - "select.zig"
 Cohesion: 0.09
@@ -672,12 +679,12 @@ Cohesion: 0.16
 Nodes (5): direct_buffer(), check_engine(), check_file(), main(), write_fixture()
 
 ### Community 97 - "kernels.zig"
-Cohesion: 0.18
+Cohesion: 0.20
 Nodes (10): addKernelLevels(), build(), byName(), compiledIn(), forced(), get(), select(), supports() (+2 more)
 
 ### Community 99 - "suite.py"
-Cohesion: 0.19
-Nodes (10): bench_hf(), bench_hk(), bench_llama(), fmt(), hk_file(), llama_gguf(), main(), Result (+2 more)
+Cohesion: 0.21
+Nodes (8): bench_hf(), bench_hk(), bench_llama(), fmt(), main(), Result, run_child(), run_engine()
 
 ### Community 100 - "hub_tests.zig"
 Cohesion: 0.21
@@ -700,12 +707,12 @@ Cohesion: 0.18
 Nodes (3): Faults, Hub, LogEntry
 
 ### Community 107 - "HkModel"
-Cohesion: 0.14
-Nodes (3): HkModel, Language Bindings and the C API, What each binding covers
+Cohesion: 0.13
+Nodes (5): halfToFloat(), HkModel, B. HK 2.0 — Unified Runtime: **2.0.0 (cut 2026-10-21 from PR #5 `feat/hk-2.0-backends`)**, Language Bindings and the C API, What each binding covers
 
-### Community 109 - "time"
-Cohesion: 0.08
-Nodes (26): run_benchmark(), benchmark_gguf(), benchmark_hk_dense(), benchmark_hk_dual_mode_nf4(), benchmark_hk_sparse_24(), benchmark_safetensors(), compute_metrics(), create_benchmark_tensors() (+18 more)
+### Community 109 - "numpy.py"
+Cohesion: 0.09
+Nodes (22): run_benchmark(), benchmark_gguf(), benchmark_hk_dense(), benchmark_hk_dual_mode_nf4(), benchmark_hk_sparse_24(), benchmark_safetensors(), compute_metrics(), create_benchmark_tensors() (+14 more)
 
 ### Community 110 - "__global__"
 Cohesion: 0.21
@@ -716,11 +723,11 @@ Cohesion: 0.14
 Nodes (10): NativePipelineEngine, PipelineContext, PipelineStageDescriptor, StageModality, audio_transcription, classification, custom, text_generation (+2 more)
 
 ### Community 112 - "regex.zig"
-Cohesion: 0.24
-Nodes (8): allMatches(), Compiler, expectMatches(), Frame, Inst, Range, Scratch, toCps()
+Cohesion: 0.17
+Nodes (12): allMatches(), Compiler, Error, InvalidPattern, OutOfMemory, UnsupportedPattern, expectMatches(), Frame (+4 more)
 
 ### Community 113 - "_Sidebar.md"
-Cohesion: 0.32
+Cohesion: 0.34
 Nodes (3): hk, Reference, Research features
 
 ### Community 114 - "hk_test.go"
@@ -731,9 +738,9 @@ Nodes (8): DotF32(), NewWriter(), Open(), PatchMetadataInPlace(), fixture(), Tes
 Cohesion: 0.13
 Nodes (8): protect_base_capacity(), make_fc1_hook(), make_fc2_hook(), make_head_hook(), make_in_hook(), make_out_hook(), make_vocab_hook(), hook()
 
-### Community 116 - "HKFile"
-Cohesion: 0.15
-Nodes (3): load_file(), HKFile, _load_single_file()
+### Community 116 - "convert_hf_checkpoint"
+Cohesion: 0.18
+Nodes (4): Conversion, convert_hf_checkpoint(), extract_hf_tokenizer_metadata(), HFArchitectureMapper
 
 ### Community 117 - "HttpSource"
 Cohesion: 0.16
@@ -748,8 +755,8 @@ Cohesion: 0.14
 Nodes (14): ValueType, array, bool, float32, float64, int16, int32, int64 (+6 more)
 
 ### Community 120 - "test_adaptive.py"
-Cohesion: 0.07
-Nodes (19): Live Architecture Evolution & Adaptation, CLI: `hk expand`, Dynamic Architecture Growth (Net2Net), `GrowthGovernor`, Plasticity isolation, Python API (`hk.adaptive.growth`), What is guaranteed, and what is not, expand_model_width() (+11 more)
+Cohesion: 0.09
+Nodes (16): Live Architecture Evolution & Adaptation, CLI: `hk expand`, Dynamic Architecture Growth (Net2Net), `GrowthGovernor`, Plasticity isolation, Python API (`hk.adaptive.growth`), What is guaranteed, and what is not, expand_model_width() (+8 more)
 
 ### Community 121 - "GGUFValueType"
 Cohesion: 0.14
@@ -772,35 +779,35 @@ Cohesion: 0.15
 Nodes (12): compilerOptions, declaration, esModuleInterop, forceConsistentCasingInFileNames, module, moduleResolution, outDir, rootDir (+4 more)
 
 ### Community 128 - "adaptive/__init__.py"
-Cohesion: 0.14
-Nodes (10): AppendixEntryType, AppendixFlags, build_model_from_topology(), __init__(), load_standalone_hk(), load_standalone_topology(), package_standalone_hk(), TopologyContainer (+2 more)
+Cohesion: 0.18
+Nodes (5): build_model_from_topology(), __init__(), load_standalone_hk(), load_standalone_topology(), TopologyContainer
 
-### Community 129 - "hk/__init__.py"
+### Community 129 - "Tensor"
 Cohesion: 0.03
-Nodes (41): Advanced Quantization Zoo & Importance Calibration, Quantization, sparsity, pruning (§22–§27), 2. Tensor files (`hk.torch`, `hk.numpy`, JAX/Flax), 4. Quantization and pruning (`hk.quantization`, `hk.pruning`), Python API Reference, align_forward(), SparsityType, StorageType (+33 more)
+Nodes (35): Advanced Quantization Zoo & Importance Calibration, Quantization, sparsity, pruning (§22–§27), 4. Quantization and pruning (`hk.quantization`, `hk.pruning`), C_TensorInfo, NativeHKReader, fine_tune_recovery(), _get_prunable_layers(), LayerSparsitySchedule (+27 more)
 
 ### Community 130 - "transaction.zig"
 Cohesion: 0.12
 Nodes (24): begin(), beginRollForward(), commit(), discardIfContainerIntact(), JournalHeader, journalPath(), Kind, restore (+16 more)
 
 ### Community 131 - "Now"
-Cohesion: 0.18
-Nodes (11): 0. HK 2.0.0 is released (2026-10-21), 2026-10-06 — context system created, 2026-10-20 — container integrity finished; graphify added; direction reset, 2026-10-21 — 2.0.0 released; root cleanup, A2. Toolchain moved to Zig 0.17 (branch `feat/hk-2.0-backends`), HK — Handoff, Log (append-only, newest last), Now (+3 more)
+Cohesion: 0.17
+Nodes (12): 0. HK 2.0.0 is released (2026-10-21), 2026-10-06 — context system created, 2026-10-20 — container integrity finished; graphify added; direction reset, 2026-10-21 — 2.0.0 released; root cleanup, A2. Toolchain moved to Zig 0.17 (branch `feat/hk-2.0-backends`), A. DONE, COMMITTED (`a1ee4eb`, branch `feat/container-integrity`): container integrity + crash-safe edits (plan §4, §5; milestone 2.4 items, landed early), HK — Handoff, Log (append-only, newest last) (+4 more)
 
 ### Community 132 - "toDevicePtr"
 Cohesion: 0.21
 Nodes (14): addResidual(), fusedQkNormRope(), fusedSwiGluResidual(), gemvF32(), gemvQ4_0(), gemvQ8_0(), gqaAttention(), headRmsNorm() (+6 more)
 
 ### Community 133 - "convert/hf.zig"
-Cohesion: 0.19
-Nodes (19): addUnique(), asBool(), asFloat(), asInt(), asString(), badKey(), collectIds(), convert() (+11 more)
+Cohesion: 0.15
+Nodes (23): addUnique(), Arch, llama, qwen2, qwen3, asBool(), asFloat(), asInt() (+15 more)
 
 ### Community 134 - "SelfPlayEvolutionEngine"
-Cohesion: 0.09
-Nodes (6): LoRAAdapter, SelfPlayEvolutionEngine, test_self_play_context_poisoning_bit_exactness(), __init__(), test_self_play_evolution_multi_generation_trajectory(), __init__()
+Cohesion: 0.15
+Nodes (6): SelfPlayEvolutionEngine, test_self_play_context_poisoning_bit_exactness(), __init__(), test_self_play_evolution_multi_generation_trajectory(), __init__(), __init__()
 
 ### Community 135 - "CONTEXT.md"
-Cohesion: 0.22
+Cohesion: 0.29
 Nodes (7): Commands, docs/graph — HK knowledge graph, Example queries, Known limits, Node and edge vocabulary, Two layers, on purpose, When to touch `curated.json`
 
 ### Community 136 - "PipelineContext"
@@ -811,13 +818,9 @@ Nodes (3): PipelineContext, PipelineStage, UniversalPipeline
 Cohesion: 0.18
 Nodes (10): AppendixEntry, AppendixType, CodeEval, DeltaPatch, KVCacheSink, LoRAAdapter, NewLayer, TopologyHead (+2 more)
 
-### Community 138 - "test_phase3_tensor_transformations"
-Cohesion: 0.15
-Nodes (9): add_layernorm_offset(), merge_fused_qkv(), pack_moe_experts(), permute_hf_to_gguf_rope(), split_fused_qkv(), sub_layernorm_offset(), unpack_moe_experts(), unpermute_gguf_to_hf_rope() (+1 more)
-
-### Community 139 - "Path"
+### Community 138 - "hf_mapper.py"
 Cohesion: 0.18
-Nodes (5): load_model(), _open_mmap_shared(), save_model(), test_generic_nn_module_save_load(), __init__()
+Nodes (7): format_arch_key(), HKKeys, ModelArchitecture, PreTokenizerType, RoPEScalingType, merge_fused_qkv(), pack_moe_experts()
 
 ### Community 141 - "Node"
 Cohesion: 0.18
@@ -835,9 +838,9 @@ Nodes (4): expandVocab(), net2Wider(), net2WiderSwiGLU(), Prng
 Cohesion: 0.19
 Nodes (11): Arch, llama, qwen2, qwen3, byteTokens(), makeTinyGguf(), makeTinyHf(), Options (+3 more)
 
-### Community 145 - "test_expansion_rigorous.py"
-Cohesion: 0.29
-Nodes (8): main(), test_day_zero_loss_continuity(), test_growth_governor_boundaries(), test_multilayer_swiglu_preservation(), __init__(), test_plasticity_isolation_gradient_masking(), test_tied_weights_integrity(), test_vocab_expansion_logit_invariance()
+### Community 145 - "_Lazy"
+Cohesion: 0.14
+Nodes (4): _explain_missing(), __getattr__(), _Lazy, MissingOptionalDependency
 
 ### Community 146 - "test_quant.zig"
 Cohesion: 0.35
@@ -916,8 +919,8 @@ Cohesion: 0.21
 Nodes (12): applySigns(), blk(), grid4(), grid8(), gridDelta(), h(), KBlock, LegacyBlock (+4 more)
 
 ### Community 171 - "isa.zig"
-Cohesion: 0.26
-Nodes (10): dpEmulated(), dpEmulatedS(), dps(), dpu(), dpw(), half(), lookup16(), sdot16() (+2 more)
+Cohesion: 0.29
+Nodes (9): dpEmulated(), dpEmulatedS(), dps(), dpu(), dpw(), half(), lookup16(), sdot16() (+1 more)
 
 ### Community 172 - "unicode.zig"
 Cohesion: 0.23
@@ -937,11 +940,15 @@ Nodes (7): SparsityType, BITMASK, BSR, CSR, NONE, PHYSICAL_PRUNED, STRUCTURED_2_
 
 ### Community 176 - "HK knowledge graph"
 Cohesion: 0.12
-Nodes (15): 1. System map (colored by status), 2a. What exists: dependencies between built subsystems, 2b. What is planned, and what gates it, 3. Milestones and what they require, 4. Measured coupling (source imports aggregated per curated subsystem), 5. Node index, 6. Files not owned by any curated node, Backends (+7 more)
+Nodes (16): 1. System map (colored by status), 2a. What exists: dependencies between built subsystems, 2b. What is planned, and what gates it, 3. Milestones and what they require, 4. Measured coupling (source imports aggregated per curated subsystem), 5. Node index, 6. Files not owned by any curated node, Backends (+8 more)
 
 ### Community 177 - "AppendixType"
 Cohesion: 0.29
 Nodes (7): AppendixType, CodeEval, DeltaPatch, KVCacheSink, LoRAAdapter, NewLayer, TopologyHead
+
+### Community 178 - "setup.py"
+Cohesion: 0.18
+Nodes (3): _has_native_files(), NativeDistribution, PlatformWheel
 
 ### Community 180 - "TokKind"
 Cohesion: 0.29
@@ -963,6 +970,10 @@ Nodes (7): SparsityType, bitmask, bsr, csr, none, physical_pruned, structured_2_
 Cohesion: 0.29
 Nodes (7): MetadataValue, val_bool, val_bytes, val_float64, val_int64, val_json, val_string
 
+### Community 185 - "scheduler.zig"
+Cohesion: 0.11
+Nodes (11): Bias, Cand, Params, Sampler, Event, FinishReason, cancelled, failed (+3 more)
+
 ### Community 187 - "150. Project Milestones"
 Cohesion: 0.20
 Nodes (10): 150. Project Milestones, HK 2.0 — Unified Runtime, HK 2.1 — Hardware Acceleration, HK 2.2 — Model Compatibility, HK 2.3 — Server Runtime, HK 2.4 — Universal Model Format, HK 2.5 — Training Platform, HK 2.6 — Adaptive Research Platform (+2 more)
@@ -971,9 +982,9 @@ Nodes (10): 150. Project Milestones, HK 2.0 — Unified Runtime, HK 2.1 — Hard
 Cohesion: 0.20
 Nodes (10): CLI Reference, Editing containers (research features), Environment, Exit status, Getting models, `hk chat <model> [options]`, `hk run <model> [prompt | -p TEXT] [options]`, `hk serve <model> [options]` (+2 more)
 
-### Community 191 - "load_file"
-Cohesion: 0.23
-Nodes (8): load_file(), load_sharded_file(), main(), test_automodel_torch_dtype_and_device(), test_native_dtype_roundtrip(), test_safe_open_lazy_slicing(), test_tied_weights_auto_detection(), test_windows_file_lock_lifecycle()
+### Community 191 - "src/gguf.zig"
+Cohesion: 0.27
+Nodes (9): calculateGGMLTensorSize(), convertGGUFToHK(), exportHKToGGUF(), getGGMLTypeInfo(), ggmlTypeToStorageType(), GGUFReader, GGUFTensorInfo, storageTypeToGGMLType() (+1 more)
 
 ### Community 192 - "hk_writer_add_tensor"
 Cohesion: 0.47
@@ -983,9 +994,9 @@ Nodes (6): hk_convert_safetensors(), hk_writer_add_tensor(), safeEnum(), safeSpa
 Cohesion: 0.25
 Nodes (5): TruncationStrategy, head, middle_out, sliding_window, tail
 
-### Community 194 - "CpuVendor"
-Cohesion: 0.33
-Nodes (6): CpuVendor, amd, apple, arm, intel, unknown
+### Community 194 - "platform.zig"
+Cohesion: 0.11
+Nodes (11): CpuidResult, cpuidSafe(), CpuVendor, amd, apple, arm, intel, unknown (+3 more)
 
 ### Community 196 - "cli_tests.zig"
 Cohesion: 0.23
@@ -997,35 +1008,39 @@ Nodes (4): Microsoft.NET.Sdk, Microsoft.NET.Sdk, net8.0, netstandard2.1
 
 ### Community 199 - "Contributing to HK Neural Tensor Framework"
 Cohesion: 0.25
-Nodes (8): 1. Code of Conduct, 2. Architecture Overview, 3. Development Environment Setup, 4. Testing Guidelines, 5. Submitting a Pull Request, Contributing to hk, Prerequisites, Setup Instructions
+Nodes (8): 1. Be kind, 2. Architecture Overview, 3. Development Environment Setup, 4. Testing Guidelines, 5. Submitting a Pull Request, Contributing to hk, Prerequisites, Setup Instructions
 
 ### Community 200 - "Storage, Sparsity, Sharding and Metadata Editing"
 Cohesion: 0.25
 Nodes (7): 2. File header (128 bytes), Flags, 2. Tile layouts (declared, not produced), 3. In-place metadata editing, 4. Multi-file sharding, 5. Quantization formats, Storage, Sparsity, Sharding and Metadata Editing
 
-### Community 201 - "tokenizer.zig"
-Cohesion: 0.17
-Nodes (9): Bigram, Diag, EncodeOptions, Fragment, jsonCopy(), Kind, bpe, spm (+1 more)
+### Community 201 - "Developer Experience & Multilingual Ecosystem"
+Cohesion: 0.19
+Nodes (8): Developer Experience & Multilingual Ecosystem, 1. Top level (`hk`), Models and config, Tokenizers, AutoConfig, AutoModel, HKForSequenceClassification, AutoTokenizer
 
 ### Community 203 - ".alloc"
 Cohesion: 0.22
 Nodes (5): CudaCachingAllocator, DeviceBuffer, deviceFunction(), emptyCache(), Mutex
 
-### Community 208 - "Error"
+### Community 205 - "matmul.zig"
 Cohesion: 0.29
-Nodes (7): Error, BadPattern, BadVocabulary, MissingVocabulary, OutOfMemory, UnsupportedPretokenizer, UnsupportedTokenizer
+Nodes (7): forPieces(), Job, Part, run(), runParts(), task(), tiledTask()
+
+### Community 208 - "Error"
+Cohesion: 0.25
+Nodes (8): Error, BadResponse, NetworkFailure, NotFound, OutOfMemory, RateLimited, TooLarge, Unauthorized
 
 ### Community 209 - "hk"
-Cohesion: 0.25
-Nodes (8): Docs, hk, How fast is it, Install, License, Quick start, What it does not do yet, Why hk
+Cohesion: 0.18
+Nodes (11): Contact, Docs, hk, How fast is it, Install, License, Quick start, The pitch (+3 more)
 
 ### Community 210 - "Node"
 Cohesion: 0.17
 Nodes (12): Node, alt, any, bol, char, empty, eol, look (+4 more)
 
 ### Community 211 - "AppendixError"
-Cohesion: 0.18
-Nodes (11): AppendixError, ChecksumMismatch, FileNotFound, GenerationNotFound, InvalidAppendixOffset, InvalidMagic, InvalidRecordHeader, IoError (+3 more)
+Cohesion: 0.13
+Nodes (15): AppendixError, ChecksumMismatch, FileNotFound, GenerationNotFound, InvalidAppendixOffset, InvalidMagic, InvalidRecordHeader, IoError (+7 more)
 
 ### Community 212 - "Inference and Serving"
 Cohesion: 0.25
@@ -1047,9 +1062,13 @@ Nodes (5): Benchmark 2026-10-20T21:30:51, llama3.2-1b-q4_k_m  (gguf: `Llama-3.2-
 Cohesion: 0.26
 Nodes (3): getProc(), initFromHandle(), Loader
 
-### Community 218 - ".matSet"
-Cohesion: 0.27
-Nodes (4): mmvqCode(), mmvqSupported(), runBatchKernel(), spirv()
+### Community 218 - "inspect_model_file"
+Cohesion: 0.25
+Nodes (5): build_gradio_app(), gradio_convert(), gradio_inspect(), inspect_model_file(), main()
+
+### Community 224 - "[2.0.0] - 2026-10-21 - Unified runtime: backend abstraction, CUDA engine with tensor cores, partial offload, container integrity"
+Cohesion: 0.33
+Nodes (6): [2.0.0] - 2026-10-21 - Unified runtime: backend abstraction, CUDA engine with tensor cores, partial offload, container integrity, Backends (toward HK 2.0), C ABI products now run on the engine kernels, Quantization: one set of block formats, and three silent bugs fixed, Toolchain, Verification
 
 ### Community 228 - "138. Platform Testing Matrix"
 Cohesion: 0.29
@@ -1064,28 +1083,28 @@ Cohesion: 0.29
 Nodes (7): Benchmarks and Performance, CPU results (tokens per second), GPU results (Vulkan), Method, Reading the CPU results, Reproduce, What has not been measured
 
 ### Community 231 - "Getting Started"
-Cohesion: 0.29
-Nodes (7): Build, Check that it works, Getting Started, Other languages, Python, Run a model, Use the GPU
+Cohesion: 0.33
+Nodes (6): Build, Check that it works, Getting Started, Other languages, Run a model, Use the GPU
 
 ### Community 232 - "Hardware and Kernels"
 Cohesion: 0.29
 Nodes (7): GPU, Hardware and Kernels, Memory, Not supported, One binary, every instruction set level, Threads, What has been run
 
 ### Community 233 - "hkntf: TypeScript / JavaScript reader and writer for `.hk` files"
-Cohesion: 0.12
-Nodes (14): halfToFloat(), hkntf: TypeScript / JavaScript reader and writer for `.hk` files, Install, License, Read a file, Tests, Write a file, [2.0.0] - 2026-10-21 - Unified runtime: backend abstraction, CUDA engine with tensor cores, partial offload, container integrity (+6 more)
+Cohesion: 0.29
+Nodes (6): hkntf: TypeScript / JavaScript reader and writer for `.hk` files, Install, License, Read a file, Tests, Write a file
 
-### Community 234 - "Error"
-Cohesion: 0.40
-Nodes (5): Error, ArrayTooLarge, InvalidTokenizerJson, OutOfMemory, UnsupportedTokenizer
+### Community 234 - "__getattr__"
+Cohesion: 0.47
+Nodes (3): __getattr__(), _numpy_maps(), _torch_maps()
 
-### Community 235 - "appendix.zig"
-Cohesion: 0.36
-Nodes (4): AppendixReader, appendRecordToFile(), appendRecordUnsealed(), rollbackToFile()
+### Community 235 - "Error"
+Cohesion: 0.33
+Nodes (6): Error, BatchTooLarge, ContextFull, GpuFailed, OutOfMemory, TokenOutOfRange
 
 ### Community 237 - "1. Non-Negotiable Architecture Principles"
-Cohesion: 0.33
-Nodes (6): 1.1 One canonical model abstraction, 1.2 Memory is a first-class resource, 1.3 Zero-copy where physically possible, 1.4 Quantization remains in the execution path, 1.5 Every optimization must have a benchmark, 1. Non-Negotiable Architecture Principles
+Cohesion: 0.29
+Nodes (7): 1.1 One canonical model abstraction, 1.2 Memory is a first-class resource, 1.3 Zero-copy where physically possible, 1.4 Quantization remains in the execution path, 1.5 Every optimization must have a benchmark, 1.6 Zero dependencies, 1. Non-Negotiable Architecture Principles
 
 ### Community 238 - "7. Memory Mapping"
 Cohesion: 0.33
@@ -1096,7 +1115,7 @@ Cohesion: 0.33
 Nodes (6): Documentation Index (`docs/wiki/`), Framework Deep Dives, Getting Started & Concepts, HK Documentation Hub, Reference & Benchmarks, Syncing with GitHub Wiki
 
 ### Community 240 - "Design"
-Cohesion: 0.40
+Cohesion: 0.33
 Nodes (5): Decisions and their reasons, Design, The pieces, What is not designed yet, Why it exists
 
 ### Community 241 - "In-Container Version Lineage (Appendix)"
@@ -1105,7 +1124,7 @@ Nodes (6): CLI, In-Container Version Lineage (Appendix), Limitations, Rollback t
 
 ### Community 243 - "Reporting a Vulnerability"
 Cohesion: 0.33
-Nodes (5): Reporting a Vulnerability, Response Timeline, Security Policy, Supported Versions, What to Include in Your Report
+Nodes (5): Reporting a Vulnerability, Security Policy, Supported Versions, What to expect, What to Include in Your Report
 
 ### Community 244 - "Act"
 Cohesion: 0.40
@@ -1139,9 +1158,13 @@ Nodes (5): Payload alignment, Raw storage, Raw Storage and Payload Alignment, `s
 Cohesion: 0.14
 Nodes (3): Device, cuda, vulkan
 
-### Community 252 - "Arch"
-Cohesion: 0.50
-Nodes (4): Arch, llama, qwen2, qwen3
+### Community 252 - "wheel_smoke.py"
+Cohesion: 0.53
+Nodes (3): fail(), main(), run()
+
+### Community 253 - "161. hk.tensor — HK's Own Tensor and Autograd Library"
+Cohesion: 0.40
+Nodes (5): 161. hk.tensor — HK's Own Tensor and Autograd Library, Delivery (inside milestone 2.5, in this order), Rules, Scope, Success
 
 ### Community 254 - "149. Release Tiers"
 Cohesion: 0.50
@@ -1171,25 +1194,21 @@ Nodes (13): check(), checkAllVariants(), checkLongContext(), checkOddShape(), ch
 Cohesion: 0.25
 Nodes (8): hk_gemm_f32(), hk_gemv_bf16(), hk_gemv_f16(), hk_gemv_f32(), hk_gemv_q4_0(), hk_gemv_q4_k(), hk_gemv_q8_0(), poison()
 
-### Community 268 - "pretok.zig"
-Cohesion: 0.25
-Nodes (3): Entry, Family, PreTokenizer
-
 ### Community 270 - "CudaError"
 Cohesion: 0.25
 Nodes (8): CudaError, CudaCallFailed, CudaNotCompiledIn, DriverNotLoaded, KernelNotFound, NoCudaDevice, OutOfDeviceMemory, UnsupportedStorageType
 
-### Community 271 - "Error"
-Cohesion: 0.22
-Nodes (9): Error, ContextFull, DeviceFailed, NoGpuSlot, OutOfDeviceMemory, OutOfMemory, PartialEngine, UnsupportedShape (+1 more)
+### Community 271 - "SelectError"
+Cohesion: 0.40
+Nodes (5): SelectError, Ambiguous, NoMatch, NoModelFiles, SplitGgufOnly
 
-### Community 273 - "TokenType"
-Cohesion: 0.25
-Nodes (8): TokenType, byte, control, normal, undefined, unknown, unused, user_defined
+### Community 272 - "nf4.zig"
+Cohesion: 0.60
+Nodes (4): dequantizeBlockNF4(), dequantizeWithResidual(), findClosestNF4(), quantizeBlockNF4()
 
 ### Community 275 - "integrity.zig"
-Cohesion: 0.26
-Nodes (12): canonicalHeader(), digest(), digestFile(), matches(), requireIntactSeal(), sealFile(), Verification, invalid (+4 more)
+Cohesion: 0.16
+Nodes (16): TensorSpec, canonicalHeader(), digest(), digestFile(), matches(), requireIntactSeal(), sealFile(), Verification (+8 more)
 
 ### Community 276 - "Kind"
 Cohesion: 0.50
@@ -1199,21 +1218,29 @@ Nodes (4): Kind, float, kquant, legacy
 Cohesion: 0.33
 Nodes (6): LoadError, BadTensorShape, BadTensorSize, MissingTensor, OutOfMemory, UnsupportedTensorType
 
-### Community 279 - "JsonError"
-Cohesion: 0.29
-Nodes (7): JsonError, ArrayTooLarge, BadNumber, InvalidJson, MixedOrNestedArray, NotAnArray, OutOfMemory
+### Community 278 - "SafeTensorsReader"
+Cohesion: 0.43
+Nodes (3): SafeTensorMeta, SafeTensorsReader, transcodeSafeTensorsToHK()
+
+### Community 279 - "Level"
+Cohesion: 0.50
+Nodes (4): Level, decode, full, none
 
 ### Community 280 - "ActKind"
 Cohesion: 0.50
 Nodes (4): ActKind, a8, f32, q8k
 
-### Community 282 - "Kind"
+### Community 282 - "Target"
 Cohesion: 0.50
-Nodes (4): Kind, f32, i32, strings
+Nodes (4): Target, cpu, cuda, vulkan
 
-### Community 285 - "Error"
+### Community 284 - "GpuMode"
 Cohesion: 0.50
-Nodes (4): Error, InvalidPattern, OutOfMemory, UnsupportedPattern
+Nodes (4): GpuMode, auto, off, on
+
+### Community 285 - "Kind"
+Cohesion: 0.50
+Nodes (4): Kind, gguf, hk, safetensors
 
 ### Community 286 - "DecodeError"
 Cohesion: 0.67
@@ -1223,33 +1250,13 @@ Nodes (3): DecodeError, BadLength, UnsupportedType
 Cohesion: 0.20
 Nodes (10): 1. What HK is, 2. Where things stand (verified 2026-10-20), 3. Repository map, 4. Commands, 5. Standing rules (owner-set; apply to every agent), 6. Plan, compressed, 7. Glossary, 8. Session protocol (+2 more)
 
-### Community 291 - "Error"
-Cohesion: 0.67
-Nodes (3): Error, Malformed, WrongKind
-
-### Community 292 - "Error"
-Cohesion: 0.25
-Nodes (8): Error, MissingFeature, NoComputeQueue, NoDevice, NoVulkan, OutOfDeviceMemory, OutOfHostMemory, VulkanFailed
-
 ### Community 293 - "AGENTS.md — working agreement for any coding agent on HK"
-Cohesion: 0.29
+Cohesion: 0.22
 Nodes (7): AGENTS.md — working agreement for any coding agent on HK, Handing off to another agent, Keeping the context system honest, Non-negotiables, Orient in 3 minutes, Pitfalls already paid for, Workflow
 
-### Community 295 - "Kind"
-Cohesion: 0.20
-Nodes (10): Kind, add, attn, embed, mm, mmv, norm, qact (+2 more)
-
-### Community 296 - "test_openai_compat.py"
-Cohesion: 0.28
-Nodes (3): Subsystems, free_port(), server()
-
-### Community 297 - "cores.zig"
-Cohesion: 0.48
-Nodes (5): linuxCores(), macCores(), physicalCores(), readSmall(), windowsCores()
-
 ### Community 299 - "source.zig"
-Cohesion: 0.08
-Nodes (18): FileSource, Mem, ReadError, BadResponse, NetworkFailure, NotFound, RateLimited, ReadFailed (+10 more)
+Cohesion: 0.12
+Nodes (10): FileSource, Mem, ReadError, BadResponse, NetworkFailure, NotFound, RateLimited, ReadFailed (+2 more)
 
 ### Community 301 - "perplexity.py"
 Cohesion: 0.52
@@ -1272,28 +1279,28 @@ Cohesion: 0.33
 Nodes (6): Coming from Another Tool, From a fine-tuning stack (PEFT, Unsloth), From Hugging Face Transformers and safetensors (Python), From llama.cpp, Ollama and LM Studio, From `torch.save`, NumPy, JAX and Flax
 
 ### Community 308 - "cuda/engine.zig"
-Cohesion: 0.12
-Nodes (14): bytesNeeded(), DevLayer, DevMat, GemmKernels, GraphSlot, Kernels, nowSecs(), Options (+6 more)
+Cohesion: 0.08
+Nodes (22): bytesNeeded(), DevLayer, DevMat, Error, ContextFull, DeviceFailed, NoGpuSlot, OutOfDeviceMemory (+14 more)
 
 ## Knowledge Gaps
 - **859 isolated node(s):** `netstandard2.1`, `Microsoft.NET.Sdk`, `F32`, `F16`, `BF16` (+854 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2738 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **76 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2770 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **65 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Language Bindings and the C API` connect `HkModel` to `_Sidebar.md`, `NativeHKEngine`, `NativeMethods`?**
-  _High betweenness centrality (0.124) - this node is a cross-community bridge._
+  _High betweenness centrality (0.119) - this node is a cross-community bridge._
 - **Are the 45 inferred relationships involving `HKConfig` (e.g. with `get_pipeline_model()` and `Models and config`) actually correct?**
   _`HKConfig` has 45 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `netstandard2.1`, `Microsoft.NET.Sdk`, `F32` to the rest of the system?**
   _859 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `numpy.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.03795824592947757 - nodes in this community are weakly interconnected._
-- **Why does `HKTrainer` connect `HKTrainer` to `appendix.py`, `hk/__init__.py`, `SelfTrainingPipeline`, `Matrix`, `MASTER_PLAN.md`, `Coming from Another Tool`, `HKConfig`, `composite.py`?**
-  _High betweenness centrality (0.094) - this node is a cross-community bridge._
+- **Should `native.py` be split into smaller, more focused modules?**
+  _Cohesion score 0.0239503925361247 - nodes in this community are weakly interconnected._
+- **Why does `HKTrainer` connect `HKConfig` to `appendix.py`, `torch.py`, `SelfTrainingPipeline`, `Matrix`, `HKTrainer`, `MASTER_PLAN.md`, `Developer Experience & Multilingual Ecosystem`, `[1.0.0] - 2026-09-14 - The Unified Release`, `Coming from Another Tool`, `LoRAAdapter`, `Added & Enhanced`?**
+  _High betweenness centrality (0.084) - this node is a cross-community bridge._
 - **Should `c_api.zig` be split into smaller, more focused modules?**
   _Cohesion score 0.015151515151515152 - nodes in this community are weakly interconnected._
 - **Why does `The C API (`include/hk.h`, `include/hk.hpp`)` connect `NativeMethods` to `HkModel`, `HkWriter`?**
-  _High betweenness centrality (0.087) - this node is a cross-community bridge._
+  _High betweenness centrality (0.079) - this node is a cross-community bridge._

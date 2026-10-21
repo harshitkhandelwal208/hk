@@ -100,7 +100,7 @@ The full list per model, format and platform is on the [Compatibility page](docs
 | What | How |
 |:---|:---|
 | CLI and server | build from source: `zig build -Doptimize=ReleaseFast` (Zig 0.17.0 or newer) |
-| Python | `pip install hknt` (bundles the native library and CLI) |
+| Python | `pip install hknt`: no dependencies, and the `hk` command works straight away (prebuilt for Linux x86-64 and ARM64, macOS Apple silicon, Windows x86-64). PyTorch and NumPy are optional extras for the Python tensor layers: `pip install "hknt[torch]"` |
 | Node.js | `npm install hkntf` |
 | Rust | `cargo add hknt` |
 | C, C++, Go, C#, Java | bindings in [bindings/](bindings/) over the C header [include/hk.h](include/hk.h); examples in [examples/](examples/) |

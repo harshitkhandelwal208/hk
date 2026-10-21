@@ -9,7 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `pip install hknt` gave a `hk` command that only printed "download the executable from the releases page": the wheel shipped the native libraries but not the `hk` executable. Each wheel is now specific to one platform (`py3-none-manylinux2014_x86_64`, `manylinux2014_aarch64`, `win_amd64`, `macosx_11_0_arm64`) and carries that platform's library and `hk` executable, so the command works as soon as pip finishes. The wheel for Linux is also 17 MB instead of 27 MB, because it no longer holds every platform's libraries. The wheel is tested in a clean virtual environment (`tests/wheel_smoke.py`) in CI and in the release workflow.
+- The package loaded a library from the current directory's `zig-out/` before its own; its own bundled library now comes first.
+
 ### Changed
+- **`hknt` has no dependencies.** `torch` and `numpy` were required; they are now the optional extras `hknt[torch]` and `hknt[numpy]`. `import hk` imports neither, and the command line, `NativeHKEngine`, `NativeHKTokenizer`, the downloader and the converters work without them. Python features that are built on them (`HKForCausalLM`, `HKTrainer`, `hk.torch`, the pruning and growth helpers, the NumPy kernel wrappers) load on first use and raise an error naming the extra when it is missing. `hk.pipeline` is both a factory function and a submodule and works either way.
+- Plan: new principle 1.6 (zero dependencies) and section 161 (`hk.tensor`, HK's own tensor and autograd library, to remove the remaining PyTorch use in milestone 2.5).
 - Authorship and contact now name me directly (Harshit Khandelwal, `harshitkhandelwal208@gmail.com`) in `SECURITY.md`, `CONTRIBUTING.md`, the README, `LICENSE`, `CITATION.cff` and the Python, npm, NuGet, crates.io and Maven package metadata, replacing "HK AI Research Team" and the `security@hk-ai.org` address. The package metadata reaches the registries with the next release.
 - The README, wiki home, repository description and package description now present hk as one project that is both a fast runtime and a model format with bigger ambitions (zero-copy mmap, 2:4 sparse storage, Net2Net growth, in-file version history, self-learning loops), with a status for each.
 - Repository root cleaned up for the public repo: `README.md` is rewritten as a landing page (measured 2.0 numbers, including where hk is behind llama.cpp, and the limits); `CONTRIBUTING.md` describes the current source layout; the agent orientation file `CONTEXT.md` moved to `docs/plan/CONTEXT.md`.

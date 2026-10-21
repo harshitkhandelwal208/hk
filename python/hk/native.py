@@ -3,6 +3,8 @@ HK Native C ABI Bridge
 Direct ctypes dispatch to native Zig SIMD compute engine and file format container.
 """
 
+
+from __future__ import annotations
 import ctypes
 import json
 import os
@@ -12,8 +14,10 @@ import sys
 import types
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, Union, List, Sequence
-import numpy as np
-import torch
+from ._lazy import lazy
+
+np = lazy("numpy")
+torch = lazy("torch")
 
 def _library_names() -> List[str]:
     """File names to look for, for this operating system and CPU only."""
@@ -35,13 +39,14 @@ def _search_dirs() -> List[Path]:
     override = os.environ.get("HK_LIB_DIR")
     if override:
         dirs.append(Path(override))
+    # The library installed with the package comes first, so a stray build in the current directory cannot shadow it.
     dirs += [
+        here,
+        here / "lib",
         here.parent.parent / "zig-out" / "lib",
         Path(os.getcwd()) / "zig-out" / "lib",
         here.parent.parent / "zig-out" / "bin",
         Path(os.getcwd()) / "zig-out" / "bin",
-        here,
-        here / "lib",
         Path(os.getcwd()),
     ]
     return dirs

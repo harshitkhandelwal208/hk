@@ -66,9 +66,9 @@ def main() -> None:
     native = _find_native_cli()
     if native is None:
         sys.stderr.write(
-            "hk: the native `hk` executable was not found next to this package.\n"
-            "    Download it from https://github.com/harshitkhandelwal208/hk/releases,\n"
-            "    or build it with `zig build -Doptimize=ReleaseFast` and set HK_BIN_DIR=zig-out/bin.\n"
+            f"hk: this install has no native build for {platform.system()} {platform.machine()}.\n"
+            "    pip installs a prebuilt `hk` for Linux (x86-64, ARM64), macOS (Apple silicon) and Windows (x86-64).\n"
+            "    On another platform, build it with Zig 0.17: `zig build -Doptimize=ReleaseFast`, then set HK_BIN_DIR=zig-out/bin.\n"
         )
         sys.exit(127)
     sys.exit(subprocess.call([native] + argv))

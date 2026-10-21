@@ -53,14 +53,16 @@ The end to end tests start `hk` as a separate process on a tiny generated model,
 
 ## Python
 
-The Python package wraps the C library and adds the research features (growth, lineage, sparsity, training):
-
 ```bash
-cp zig-out/lib/libhk.so python/hk/
-pip install -e .
+pip install hknt
+hk --help
 ```
 
-`pip install hknt` installs the published wheel, which is older than the code in this repository. The `hk` command of the Python package finds and runs the native executable; set `HK_BIN_DIR=zig-out/bin` if it is not next to the package. See the [Python API Reference](Python-API-Reference.md).
+That is the whole install: no dependencies, and no separate download. The wheel for your platform (Linux x86-64 and ARM64, macOS on Apple silicon, Windows x86-64) carries the native library and the `hk` executable, and `import hk` imports neither NumPy nor PyTorch. On another platform pip falls back to the source package, which has no native build; build one with Zig and point `HK_BIN_DIR` at it.
+
+The Python tensor layers (`HKForCausalLM`, `HKTrainer`, `hk.torch`, `hk.numpy`, the pruning and growth helpers) still use PyTorch and NumPy for now, so they are optional extras: `pip install "hknt[torch]"` or `pip install "hknt[numpy]"`. Touching one without its package raises an error that says which extra to install. Replacing PyTorch with HK's own tensor library is on the roadmap (plan section 161).
+
+To work on the Python package from a checkout: build the native code (`zig build -Doptimize=ReleaseFast`), then `pip install -e ".[dev]"` and set `HK_LIB_DIR=zig-out/lib` and `HK_BIN_DIR=zig-out/bin` (they are also found automatically when you run from the repository root). See the [Python API Reference](Python-API-Reference.md).
 
 ## Other languages
 

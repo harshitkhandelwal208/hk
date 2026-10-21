@@ -3,11 +3,15 @@ HK Neural Tensor Format: Binary Specification Constants and Format Utilities.
 128-byte aligned, zero-copy, cross-platform neural format specification.
 """
 
+
+from __future__ import annotations
 from typing import Dict, Any, Optional, Tuple, List, Union
 from enum import IntEnum
 import os
-import torch
-import numpy as np
+from ._lazy import lazy
+
+np = lazy("numpy")
+torch = lazy("torch")
 
 MAGIC = b"HKNT"
 VERSION_MAJOR = 1
@@ -181,62 +185,81 @@ FLAG_IS_SHARDED = 0x00000040
 FLAG_RAW_WEIGHT_STORAGE = 0x00000080
 FLAG_UNIVERSAL_PAGE_ALIGNED = 0x00000100
 
-TORCH_DTYPE_TO_STORAGE = {
-    torch.float32: STORAGE_F32,
-    torch.float16: STORAGE_F16,
-    torch.bfloat16: STORAGE_BF16,
-    torch.int8: STORAGE_INT8,
-    torch.int16: STORAGE_INT16,
-    torch.int32: STORAGE_INT32,
-    torch.int64: STORAGE_INT64,
-    torch.uint8: STORAGE_UINT8,
-    torch.float64: STORAGE_F64,
-    torch.bool: STORAGE_BOOL,
-}
+def _torch_maps() -> Dict[str, Dict[Any, Any]]:
+    """The torch dtype tables. Built on first use so that this module imports without torch."""
+    TORCH_DTYPE_TO_STORAGE = {
+        torch.float32: STORAGE_F32,
+        torch.float16: STORAGE_F16,
+        torch.bfloat16: STORAGE_BF16,
+        torch.int8: STORAGE_INT8,
+        torch.int16: STORAGE_INT16,
+        torch.int32: STORAGE_INT32,
+        torch.int64: STORAGE_INT64,
+        torch.uint8: STORAGE_UINT8,
+        torch.float64: STORAGE_F64,
+        torch.bool: STORAGE_BOOL,
+    }
 
-STORAGE_TO_TORCH_DTYPE = {
-    STORAGE_F32: torch.float32,
-    STORAGE_F16: torch.float16,
-    STORAGE_BF16: torch.bfloat16,
-    STORAGE_INT8: torch.int8,
-    STORAGE_INT16: torch.int16,
-    STORAGE_INT32: torch.int32,
-    STORAGE_INT64: torch.int64,
-    STORAGE_UINT8: torch.uint8,
-    STORAGE_F64: torch.float64,
-    STORAGE_BOOL: torch.bool,
-}
+    STORAGE_TO_TORCH_DTYPE = {
+        STORAGE_F32: torch.float32,
+        STORAGE_F16: torch.float16,
+        STORAGE_BF16: torch.bfloat16,
+        STORAGE_INT8: torch.int8,
+        STORAGE_INT16: torch.int16,
+        STORAGE_INT32: torch.int32,
+        STORAGE_INT64: torch.int64,
+        STORAGE_UINT8: torch.uint8,
+        STORAGE_F64: torch.float64,
+        STORAGE_BOOL: torch.bool,
+    }
 
-NUMPY_DTYPE_TO_STORAGE = {
-    np.dtype('float32'): STORAGE_F32,
-    np.dtype('float16'): STORAGE_F16,
-    np.dtype('int8'): STORAGE_INT8,
-    np.dtype('int16'): STORAGE_INT16,
-    np.dtype('int32'): STORAGE_INT32,
-    np.dtype('int64'): STORAGE_INT64,
-    np.dtype('uint8'): STORAGE_UINT8,
-    np.dtype('uint16'): STORAGE_UINT16,
-    np.dtype('uint32'): STORAGE_UINT32,
-    np.dtype('uint64'): STORAGE_UINT64,
-    np.dtype('float64'): STORAGE_F64,
-    np.dtype('bool'): STORAGE_BOOL,
-}
+    return {"TORCH_DTYPE_TO_STORAGE": TORCH_DTYPE_TO_STORAGE, "STORAGE_TO_TORCH_DTYPE": STORAGE_TO_TORCH_DTYPE}
 
-STORAGE_TO_NUMPY_DTYPE = {
-    STORAGE_F32: np.float32,
-    STORAGE_F16: np.float16,
-    STORAGE_BF16: np.uint16,
-    STORAGE_INT8: np.int8,
-    STORAGE_INT16: np.int16,
-    STORAGE_INT32: np.int32,
-    STORAGE_INT64: np.int64,
-    STORAGE_UINT8: np.uint8,
-    STORAGE_UINT16: np.uint16,
-    STORAGE_UINT32: np.uint32,
-    STORAGE_UINT64: np.uint64,
-    STORAGE_F64: np.float64,
-    STORAGE_BOOL: np.bool_,
-}
+
+def _numpy_maps() -> Dict[str, Dict[Any, Any]]:
+    """The NumPy dtype tables, built on first use."""
+    NUMPY_DTYPE_TO_STORAGE = {
+        np.dtype('float32'): STORAGE_F32,
+        np.dtype('float16'): STORAGE_F16,
+        np.dtype('int8'): STORAGE_INT8,
+        np.dtype('int16'): STORAGE_INT16,
+        np.dtype('int32'): STORAGE_INT32,
+        np.dtype('int64'): STORAGE_INT64,
+        np.dtype('uint8'): STORAGE_UINT8,
+        np.dtype('uint16'): STORAGE_UINT16,
+        np.dtype('uint32'): STORAGE_UINT32,
+        np.dtype('uint64'): STORAGE_UINT64,
+        np.dtype('float64'): STORAGE_F64,
+        np.dtype('bool'): STORAGE_BOOL,
+    }
+
+    STORAGE_TO_NUMPY_DTYPE = {
+        STORAGE_F32: np.float32,
+        STORAGE_F16: np.float16,
+        STORAGE_BF16: np.uint16,
+        STORAGE_INT8: np.int8,
+        STORAGE_INT16: np.int16,
+        STORAGE_INT32: np.int32,
+        STORAGE_INT64: np.int64,
+        STORAGE_UINT8: np.uint8,
+        STORAGE_UINT16: np.uint16,
+        STORAGE_UINT32: np.uint32,
+        STORAGE_UINT64: np.uint64,
+        STORAGE_F64: np.float64,
+        STORAGE_BOOL: np.bool_,
+    }
+    return {"NUMPY_DTYPE_TO_STORAGE": NUMPY_DTYPE_TO_STORAGE, "STORAGE_TO_NUMPY_DTYPE": STORAGE_TO_NUMPY_DTYPE}
+
+
+_DTYPE_MAP_CACHE: Dict[str, Dict[Any, Any]] = {}
+
+
+def __getattr__(name: str) -> Any:
+    if name in ("TORCH_DTYPE_TO_STORAGE", "STORAGE_TO_TORCH_DTYPE", "NUMPY_DTYPE_TO_STORAGE", "STORAGE_TO_NUMPY_DTYPE"):
+        if name not in _DTYPE_MAP_CACHE:
+            _DTYPE_MAP_CACHE.update(_torch_maps() if "TORCH" in name else _numpy_maps())
+        return _DTYPE_MAP_CACHE[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def align_forward(offset: int, alignment: int = 128) -> int:

@@ -3,10 +3,14 @@ HK Framework - Pure Python Zero-Dependency GGUF v1/v2/v3 Binary Parser & Ingesti
 Enables transparent inspection, tensor mapping, and conversion without requiring external dependencies.
 """
 
+
+from __future__ import annotations
 from typing import Dict, Any, List, Tuple, Optional, BinaryIO
 import os
 import struct
-import numpy as np
+from ._lazy import lazy
+
+np = lazy("numpy")
 
 # GGUF Constants
 GGUF_MAGIC = 0x46554747  # 'GGUF'

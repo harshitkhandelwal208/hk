@@ -98,6 +98,47 @@ jobs:
         run: |
           pytest tests/ -v --durations=10
 
+  # The wheel must install with no other package, give a working `hk` command without a download step, and import
+  # without torch or numpy. Built here from the checkout's own native build; the release workflow repeats the test on
+  # the wheels it publishes.
+  python-wheel-smoke:
+    name: Wheel installs with no dependencies (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Zig
+        uses: ./.github/actions/setup-zig
+
+      - name: Build the native library and executable
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Stage them inside the package
+        shell: python
+        run: |
+          import glob, os, shutil
+          os.makedirs("python/hk/bin", exist_ok=True)
+          for f in glob.glob("zig-out/lib/*hk*") + glob.glob("zig-out/bin/hk.dll"):
+              if os.path.isfile(f) and not f.endswith(".lib"):
+                  shutil.copy(f, "python/hk/")
+          for f in ("zig-out/bin/hk", "zig-out/bin/hk.exe"):
+              if os.path.isfile(f):
+                  shutil.copy(f, "python/hk/bin/")
+
+      - name: Build the wheel and test it in a clean environment
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+          python tests/wheel_smoke.py dist/*.whl
+
   multilingual-bindings:
     name: Language Binding Tests
     runs-on: ubuntu-latest

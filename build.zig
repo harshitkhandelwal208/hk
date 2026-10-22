@@ -207,6 +207,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("tools/hk_compare.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{.{ .name = "hk", .module = hk_mod }},
     });
     b.installArtifact(b.addExecutable(.{ .name = "hk-compare", .root_module = compare_mod }));
 

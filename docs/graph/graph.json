@@ -6,7 +6,7 @@
   "curated_nodes": 79,
   "curated_edges": 152,
   "file_nodes": 184,
-  "import_edges": 425,
+  "import_edges": 426,
   "unowned_files": 1,
   "status_counts": {
    "done": 9,
@@ -2013,7 +2013,7 @@
    "type": "file",
    "label": "src/platform.zig",
    "lang": "zig",
-   "loc": 432,
+   "loc": 610,
    "owner": "platform-mmap"
   },
   {
@@ -2565,7 +2565,7 @@
    "type": "file",
    "label": "tools/hk_cli.zig",
    "lang": "zig",
-   "loc": 2130,
+   "loc": 2118,
    "owner": "cli"
   },
   {
@@ -2573,7 +2573,7 @@
    "type": "file",
    "label": "tools/hk_compare.zig",
    "lang": "zig",
-   "loc": 345,
+   "loc": 334,
    "owner": "bench-tools"
   },
   {
@@ -2597,7 +2597,7 @@
    "type": "file",
    "label": "tools/hk_probe.zig",
    "lang": "zig",
-   "loc": 409,
+   "loc": 394,
    "owner": "bench-tools"
   },
   {
@@ -6400,6 +6400,11 @@
   {
    "s": "file:tools/hk_cli.zig",
    "t": "file:tools/cli_hub.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:tools/hk_compare.zig",
+   "t": "file:src/root.zig",
    "type": "imports"
   },
   {

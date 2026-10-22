@@ -41,6 +41,22 @@ The first command downloads the model, converts it while it downloads and keeps 
 
 A GGUF repository works the same way and picks Q4_K_M unless you ask for another quant (`hk pull bartowski/SmolLM2-135M-Instruct-GGUF:Q8_0`). Already have a GGUF file? `hk convert-gguf model.gguf model.hk`.
 
+### Windows
+
+The same steps work from PowerShell or Git Bash with [Zig 0.17 for Windows](https://ziglang.org/download/). Unzip it anywhere and put its folder on `PATH`, or call `zig.exe` by its full path.
+
+```powershell
+git clone https://github.com/harshitkhandelwal208/hk; cd hk
+zig build -Doptimize=ReleaseFast -j2     # -j2 limits parallel compile jobs, which keeps the compiler's memory low
+
+.\zig-out\bin\hk.exe run  Qwen/Qwen3-0.6B "What is the capital of France?" --chat --temp 0
+.\zig-out\bin\hk.exe chat Qwen/Qwen3-0.6B
+```
+
+In Git Bash use `./zig-out/bin/hk.exe` instead. Models are cached under your home folder in `.cache/hk/models`, and `hk list` shows them.
+
+The line printed after each answer reports memory as `N MiB = A private + B mapped`. Private is what the engine itself allocated; mapped is the model file read in place from disk, which the OS can drop again. Linux and Windows both measure the two parts. macOS reports the total only, and `n/a` appears where the platform gives nothing at all. On Windows, DLLs such as the GPU driver also count as mapped.
+
 ## What is inside
 
 hk is two things in one repository: a **runtime** that is fast and frugal with memory, and a **container** that carries the bigger ideas. The status column is the honest part.
@@ -92,6 +108,8 @@ I would rather you hear this from me than find it out.
 - The ARM kernels compile and pass the portable tests but have not been run on ARM hardware; the older x86 levels have not been benchmarked on older CPUs.
 - The `tokenizer.json` importer handles byte-level BPE only, so a safetensors repository with a SentencePiece or Unigram tokenizer is refused with a message (its GGUF version works).
 - Split GGUF files (`-00001-of-00003.gguf`) are not downloaded yet; no grammar or JSON-schema constrained decoding; no tool-call parsing; an interrupted conversion restarts from the beginning (the download resumes).
+
+Windows was run on one machine: Windows 11, Zig 0.17, an RTX 5060 laptop GPU. The unit tests (Debug, ReleaseFast, `-Dcpu=x86_64_v3`, `-Dcpu=x86_64`) and the end-to-end tests pass there, and `hk run` generates correctly on both the CPU and the CUDA engine. Not run: macOS, ARM, AMD and Intel GPUs, the Vulkan engine on Windows by itself, and the Windows path of `hk-compare`.
 
 The full list per model, format and platform is on the [Compatibility page](docs/wiki/Compatibility.md).
 

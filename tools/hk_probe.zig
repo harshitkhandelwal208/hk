@@ -315,32 +315,17 @@ fn multi(allocator: std.mem.Allocator, io: std.Io, model: *hk.engine.Model, n_se
 }
 
 /// Resident memory split into anonymous (the engine's own cost) and file backed (weights mapped
-/// from the container, shared with the page cache). Linux only; prints nothing elsewhere.
+/// from the container, shared with the page cache). Prints the total only where the platform
+/// cannot split it, and nothing where it cannot be read.
 fn printMem(io: std.Io, label: []const u8) void {
-    var buf: [4096]u8 = undefined;
-    const cwd = std.Io.Dir.cwd();
-    var f = cwd.openFile(io, "/proc/self/status", .{}) catch return;
-    defer f.close(io);
-    const n = f.readPositionalAll(io, &buf, 0) catch return;
-    var rss: u64 = 0;
-    var anon: u64 = 0;
-    var file: u64 = 0;
-    var lines = std.mem.splitScalar(u8, buf[0..n], '\n');
-    while (lines.next()) |line| {
-        const kv = struct {
-            fn kb(l: []const u8) u64 {
-                var it = std.mem.tokenizeAny(u8, l, " \t");
-                _ = it.next();
-                return std.fmt.parseInt(u64, it.next() orelse "0", 10) catch 0;
-            }
-        }.kb;
-        if (std.mem.startsWith(u8, line, "VmRSS:")) rss = kv(line);
-        if (std.mem.startsWith(u8, line, "RssAnon:")) anon = kv(line);
-        if (std.mem.startsWith(u8, line, "RssFile:")) file = kv(line);
+    _ = io;
+    const m = hk.platform.selfMemory();
+    if (!m.ok) return;
+    if (!m.has_split) {
+        std.debug.print("mem[{s}] rss {d:.1} MiB\n", .{ label, m.rss_mib });
+        return;
     }
-    std.debug.print("mem[{s}] rss {d:.1} MiB = anon {d:.1} + file {d:.1}\n", .{
-        label, @as(f64, @floatFromInt(rss)) / 1024, @as(f64, @floatFromInt(anon)) / 1024, @as(f64, @floatFromInt(file)) / 1024,
-    });
+    std.debug.print("mem[{s}] rss {d:.1} MiB = anon {d:.1} + file {d:.1}\n", .{ label, m.rss_mib, m.anon_mib, m.file_mib });
 }
 
 fn printProfile(label: []const u8, p: *const hk.engine.model.Profile) void {

@@ -430,3 +430,181 @@ pub fn truncateFile(path: []const u8, new_size: u64, allocator: std.mem.Allocato
     }
 }
 
+
+const builtin = @import("builtin");
+
+/// Resident memory of one process in MiB, as the operating system reports it. Memory is the
+/// project's first constraint, so the split between what the engine allocates and what is just
+/// the mapped model file is part of the answer, not a detail.
+pub const MemoryUsage = struct {
+    rss_mib: f64 = 0,
+    /// Private memory: the heap and anything else not backed by a file.
+    anon_mib: f64 = 0,
+    /// File backed memory: the mapped model, and loaded libraries.
+    file_mib: f64 = 0,
+    /// False when nothing could be read (unsupported OS, the process is gone or not accessible).
+    ok: bool = false,
+    /// True when `anon_mib` and `file_mib` were measured; false when only `rss_mib` was.
+    has_split: bool = false,
+};
+
+/// Memory of the calling process. Linux and Windows give the full split; macOS only the total
+/// (the Mach call used there has no private/file breakdown). Other systems report `ok == false`.
+pub fn selfMemory() MemoryUsage {
+    return switch (builtin.os.tag) {
+        .linux => procStatusMemory("/proc/self/status"),
+        .windows => windowsMemory(std.os.windows.GetCurrentProcess()),
+        .macos => machMemory(),
+        else => .{},
+    };
+}
+
+/// Memory of a child process, from the id `std.process.Child` holds. Linux and Windows only:
+/// macOS cannot inspect another process without special privileges, so it reports `ok == false`.
+pub fn processMemory(id: std.process.Child.Id) MemoryUsage {
+    return switch (builtin.os.tag) {
+        .linux => blk: {
+            var path: [32]u8 = undefined;
+            const p = std.fmt.bufPrint(&path, "/proc/{d}/status", .{id}) catch break :blk .{};
+            break :blk procStatusMemory(p);
+        },
+        .windows => windowsMemory(id),
+        else => .{},
+    };
+}
+
+fn procStatusMemory(path: []const u8) MemoryUsage {
+    var buf: [8192]u8 = undefined;
+    const io = std.Options.debug_io;
+    var f = std.Io.Dir.cwd().openFile(io, path, .{}) catch return .{};
+    defer f.close(io);
+    const n = f.readPositionalAll(io, &buf, 0) catch return .{};
+    return parseProcStatus(buf[0..n]);
+}
+
+/// Reads VmRSS, RssAnon and RssFile (kB) out of /proc/<pid>/status. Kernels before 4.5 have no
+/// RssAnon/RssFile; they report the total only rather than a split of zeros.
+fn parseProcStatus(text: []const u8) MemoryUsage {
+    var u: MemoryUsage = .{};
+    var have_rss = false;
+    var have_anon = false;
+    var have_file = false;
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |line| {
+        var it = std.mem.tokenizeAny(u8, line, " \t");
+        const key = it.next() orelse continue;
+        const kib = std.fmt.parseInt(u64, it.next() orelse continue, 10) catch continue;
+        const mib = @as(f64, @floatFromInt(kib)) / 1024.0;
+        if (std.mem.eql(u8, key, "VmRSS:")) {
+            u.rss_mib = mib;
+            have_rss = true;
+        } else if (std.mem.eql(u8, key, "RssAnon:")) {
+            u.anon_mib = mib;
+            have_anon = true;
+        } else if (std.mem.eql(u8, key, "RssFile:")) {
+            u.file_mib = mib;
+            have_file = true;
+        }
+    }
+    u.ok = have_rss;
+    u.has_split = have_rss and have_anon and have_file;
+    return u;
+}
+
+/// Fills `info` as PSAPI_WORKING_SET_INFORMATION: element 0 is the entry count, then one
+/// PSAPI_WORKING_SET_BLOCK per resident page. When the buffer is too small it fails and element 0
+/// still holds the count that is needed.
+extern "kernel32" fn K32QueryWorkingSet(process: std.os.windows.HANDLE, info: [*]usize, cb: u32) callconv(.winapi) i32;
+
+/// `Shared` in PSAPI_WORKING_SET_BLOCK: the page belongs to a section (a mapped file or an
+/// image), not to the private heap.
+const working_set_shared: usize = 1 << 8;
+
+/// Windows has no /proc, so the resident pages are listed and sorted by the `Shared` flag.
+fn windowsMemory(process: std.os.windows.HANDLE) MemoryUsage {
+    const gpa = std.heap.page_allocator;
+    var cap: usize = 1 << 17;
+    // The working set can grow between the size query and the fill, so retry a few times.
+    for (0..8) |_| {
+        const buf = gpa.alloc(usize, cap + 1) catch return .{};
+        defer gpa.free(buf);
+        buf[0] = 0;
+        if (K32QueryWorkingSet(process, buf.ptr, @intCast(buf.len * @sizeOf(usize))) != 0)
+            return splitWorkingSet(buf[1..][0..@min(buf[0], cap)]);
+        if (buf[0] <= cap) return .{};
+        cap = buf[0] + buf[0] / 8 + 1024;
+    }
+    return .{};
+}
+
+/// Shared pages (the mapped model, and loaded DLLs) count as file backed, the rest as private:
+/// the same split as RssFile and RssAnon on Linux, with DLL images on the file side. Entries
+/// describe 4 KiB pages.
+fn splitWorkingSet(entries: []const usize) MemoryUsage {
+    var shared: usize = 0;
+    for (entries) |entry| {
+        if (entry & working_set_shared != 0) shared += 1;
+    }
+    const mib_per_page = 4096.0 / (1024.0 * 1024.0);
+    const file = @as(f64, @floatFromInt(shared)) * mib_per_page;
+    const anon = @as(f64, @floatFromInt(entries.len - shared)) * mib_per_page;
+    return .{ .rss_mib = anon + file, .anon_mib = anon, .file_mib = file, .ok = true, .has_split = true };
+}
+
+fn machMemory() MemoryUsage {
+    var info: std.c.mach_task_basic_info = undefined;
+    var count: std.c.mach_msg_type_number_t = std.c.MACH.TASK.BASIC.INFO_COUNT;
+    if (std.c.task_info(std.c.mach_task_self(), std.c.MACH.TASK.BASIC.INFO, @ptrCast(&info), &count) != 0) return .{};
+    return .{ .rss_mib = @as(f64, @floatFromInt(info.resident_size)) / (1024.0 * 1024.0), .ok = true };
+}
+
+test "proc status gives the resident split" {
+    const text = "Name:\thk\nVmRSS:\t    2048 kB\nRssAnon:\t     512 kB\nRssFile:\t    1536 kB\nRssShmem:\t       0 kB\n";
+    const u = parseProcStatus(text);
+    try std.testing.expect(u.ok and u.has_split);
+    try std.testing.expectEqual(@as(f64, 2.0), u.rss_mib);
+    try std.testing.expectEqual(@as(f64, 0.5), u.anon_mib);
+    try std.testing.expectEqual(@as(f64, 1.5), u.file_mib);
+}
+
+test "proc status without the split fields reports the total only" {
+    const u = parseProcStatus("VmRSS:\t 1024 kB\n");
+    try std.testing.expect(u.ok);
+    try std.testing.expect(!u.has_split);
+    try std.testing.expectEqual(@as(f64, 1.0), u.rss_mib);
+    try std.testing.expect(!parseProcStatus("Name:\thk\nRssAnon:\t 8 kB\n").ok);
+}
+
+test "working set pages are split by the shared flag" {
+    // PSAPI_WORKING_SET_BLOCK: Protection in bits 0-4, ShareCount in 5-7, Shared in bit 8, the
+    // virtual page number above. The literals pin the Windows layout; using `working_set_shared`
+    // here would let a wrong constant cancel itself out. A page with a share count but without
+    // the Shared flag is still private.
+    const private_page: usize = 0x4;
+    const counted_private_page: usize = 0x4 | 0xA0;
+    const shared_page: usize = 0x4 | 0x100;
+    const entries = [_]usize{ 0x1000 | private_page, 0x2000 | private_page, 0x3000 | counted_private_page, 0x4000 | shared_page, 0x5000 | shared_page };
+    const u = splitWorkingSet(&entries);
+    const page = 4096.0 / (1024.0 * 1024.0);
+    try std.testing.expect(u.ok and u.has_split);
+    try std.testing.expectEqual(3.0 * page, u.anon_mib);
+    try std.testing.expectEqual(2.0 * page, u.file_mib);
+    try std.testing.expectEqual(5.0 * page, u.rss_mib);
+}
+
+test "this process reports memory and sees private pages being touched" {
+    switch (builtin.os.tag) {
+        .linux, .windows, .macos => {},
+        else => return error.SkipZigTest,
+    }
+    const before = selfMemory();
+    try std.testing.expect(before.ok and before.rss_mib > 0);
+    const size = 64 << 20;
+    const block = try std.heap.page_allocator.alloc(u8, size);
+    defer std.heap.page_allocator.free(block);
+    @memset(block, 0xA5);
+    std.mem.doNotOptimizeAway(block[size - 1]);
+    const after = selfMemory();
+    try std.testing.expect(after.rss_mib - before.rss_mib >= 32);
+    if (after.has_split) try std.testing.expect(after.anon_mib - before.anon_mib >= 32);
+}

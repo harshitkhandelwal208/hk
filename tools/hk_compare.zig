@@ -6,8 +6,9 @@
 //! prompt and generation lengths and the same thread count. The two tools run alternately, so a
 //! slow moment on the machine (another process, a hot CPU) hits both. Both are summarized the
 //! same way, by the median of the repeats, with the range next to it. Memory comes from polling
-//! /proc while a real generation runs: peak resident memory and peak private (anonymous) memory,
-//! which is what the process costs on top of the model file the OS can drop from its cache.
+//! the OS while a real generation runs (/proc on Linux, the working set on Windows): peak
+//! resident memory and peak private (anonymous) memory, which is what the process costs on top
+//! of the model file the OS can drop from its cache.
 //!
 //! Options: --threads N (default: half the logical CPUs), --prompt-tokens N (512),
 //! --gen-tokens N (64), --repeats N (5), --out FILE (also write the markdown there),
@@ -17,6 +18,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const platform = @import("hk").platform;
 
 const Allocator = std.mem.Allocator;
 
@@ -138,8 +140,8 @@ pub fn main(init: std.process.Init) !void {
         _ = &t_s;
 
         const prompt = "Write a short story about a robot who learns to paint.";
-        const hk_mem = try memoryRun(gpa, io, &env, &.{ hk, "run", hk_model, prompt, "--temp", "0", "-n", g_s, "--threads", t_s });
-        const ll_mem = try memoryRun(gpa, io, &env, &.{ llama_cli, "-m", gguf, "-p", prompt, "-n", g_s, "-t", t_s, "--temp", "0", "--no-display-prompt", "-no-cnv", "-c", "1024" });
+        const hk_mem = try memoryRun(io, &env, &.{ hk, "run", hk_model, prompt, "--temp", "0", "-n", g_s, "--threads", t_s });
+        const ll_mem = try memoryRun(io, &env, &.{ llama_cli, "-m", gguf, "-p", prompt, "-n", g_s, "-t", t_s, "--temp", "0", "--no-display-prompt", "-no-cnv", "-c", "1024" });
         if (!hk_mem.ok or !ll_mem.ok) std.debug.print("warning: a generation run failed; memory numbers are not valid\n", .{});
 
         try rows.append(arena, .{
@@ -298,48 +300,35 @@ fn llamaSpeed(gpa: Allocator, io: std.Io, env: *const std.process.Environ.Map, b
     return .{ pp.?, tg.? };
 }
 
-fn statusKiB(text: []const u8, key: []const u8) usize {
-    var lines = std.mem.splitScalar(u8, text, '\n');
-    while (lines.next()) |l| {
-        if (std.mem.startsWith(u8, l, key) and l.len > key.len and l[key.len] == ':') {
-            var it = std.mem.tokenizeAny(u8, l[key.len + 1 ..], " \tkB");
-            if (it.next()) |v| return std.fmt.parseInt(usize, v, 10) catch 0;
-        }
-    }
-    return 0;
-}
-
-/// Runs a generation and returns the peak resident and private memory seen by polling /proc.
-fn memoryRun(gpa: Allocator, io: std.Io, env: *const std.process.Environ.Map, argv: []const []const u8) !Mem {
-    if (builtin.os.tag != .linux) return .{};
+/// Runs a generation and returns the peak resident and private memory seen by polling the
+/// operating system (/proc on Linux, the working set on Windows) while the child runs.
+fn memoryRun(io: std.Io, env: *const std.process.Environ.Map, argv: []const []const u8) !Mem {
+    if (builtin.os.tag != .linux and builtin.os.tag != .windows) return .{};
     var child = try std.process.spawn(io, .{ .argv = argv, .environ_map = env, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore });
-    const pid = child.id orelse return .{};
-    var path_buf: [64]u8 = undefined;
-    const path = try std.fmt.bufPrint(&path_buf, "/proc/{d}/status", .{pid});
+    const id = child.id orelse return .{};
 
     const Poll = struct {
-        fn run(gpa_: Allocator, io_: std.Io, path_: []const u8, stop: *std.atomic.Value(bool), peak_rss: *usize, peak_anon: *usize) void {
+        // One query can land just after the child exits and fail; it reads as "not ok" and is ignored.
+        fn run(io_: std.Io, id_: std.process.Child.Id, stop: *std.atomic.Value(bool), peak: *Mem) void {
             while (!stop.load(.acquire)) {
-                var buf: [1 << 15]u8 = undefined;
-                if (slurp(io_, path_, &buf)) |text| {
-                    peak_rss.* = @max(peak_rss.*, statusKiB(text, "VmRSS"));
-                    peak_anon.* = @max(peak_anon.*, statusKiB(text, "RssAnon"));
-                } else |_| {}
-                _ = gpa_;
+                const m = platform.processMemory(id_);
+                if (m.ok) {
+                    peak.rss_mib = @max(peak.rss_mib, m.rss_mib);
+                    peak.anon_mib = @max(peak.anon_mib, m.anon_mib);
+                }
                 std.Io.sleep(io_, .fromMilliseconds(5), .awake) catch {};
             }
         }
     };
     var stop = std.atomic.Value(bool).init(false);
-    var rss: usize = 0;
-    var anon: usize = 0;
-    const th = try std.Thread.spawn(.{}, Poll.run, .{ gpa, io, path, &stop, &rss, &anon });
+    var peak: Mem = .{};
+    const th = try std.Thread.spawn(.{}, Poll.run, .{ io, id, &stop, &peak });
     const term = try child.wait(io);
     stop.store(true, .release);
     th.join();
-    const ok = switch (term) {
+    peak.ok = switch (term) {
         .exited => |c| c == 0,
         else => false,
     };
-    return .{ .rss_mib = @as(f64, @floatFromInt(rss)) / 1024.0, .anon_mib = @as(f64, @floatFromInt(anon)) / 1024.0, .ok = ok };
+    return peak;
 }

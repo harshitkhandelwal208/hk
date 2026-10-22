@@ -1631,27 +1631,16 @@ fn nowNs() i128 {
     return std.Io.Timestamp.now(std.Options.debug_io, .awake).nanoseconds;
 }
 
-/// Resident memory split, Linux only.
-fn memSummary() struct { rss_mib: f64, anon_mib: f64, file_mib: f64 } {
-    var buf: [4096]u8 = undefined;
-    const io = std.Options.debug_io;
-    var f = std.Io.Dir.cwd().openFile(io, "/proc/self/status", .{}) catch return .{ .rss_mib = 0, .anon_mib = 0, .file_mib = 0 };
-    defer f.close(io);
-    const n = f.readPositionalAll(io, &buf, 0) catch return .{ .rss_mib = 0, .anon_mib = 0, .file_mib = 0 };
-    var r: f64 = 0;
-    var an: f64 = 0;
-    var fl: f64 = 0;
-    var lines = std.mem.splitScalar(u8, buf[0..n], '\n');
-    while (lines.next()) |line| {
-        var it = std.mem.tokenizeAny(u8, line, " \t");
-        const key = it.next() orelse continue;
-        const val = std.fmt.parseInt(u64, it.next() orelse continue, 10) catch continue;
-        const mib = @as(f64, @floatFromInt(val)) / 1024.0;
-        if (std.mem.eql(u8, key, "VmRSS:")) r = mib;
-        if (std.mem.eql(u8, key, "RssAnon:")) an = mib;
-        if (std.mem.eql(u8, key, "RssFile:")) fl = mib;
-    }
-    return .{ .rss_mib = r, .anon_mib = an, .file_mib = fl };
+/// The memory figure for the stats line: the split when the platform can measure it, the total
+/// when it cannot, and "n/a" when it could not be read at all.
+fn formatMemory(buf: []u8, m: hk.platform.MemoryUsage) []const u8 {
+    const text = if (!m.ok)
+        std.fmt.bufPrint(buf, "n/a", .{})
+    else if (m.has_split)
+        std.fmt.bufPrint(buf, "{d:.0} MiB = {d:.0} private + {d:.0} mapped", .{ m.rss_mib, m.anon_mib, m.file_mib })
+    else
+        std.fmt.bufPrint(buf, "{d:.0} MiB", .{m.rss_mib});
+    return text catch "n/a";
 }
 
 const GenStats = struct { prompt_tokens: usize, reused: usize, prompt_secs: f64, produced: usize, gen_secs: f64 };
@@ -1711,17 +1700,16 @@ fn generate(
 }
 
 fn printStats(l: *Loaded, st: GenStats) void {
-    const m = memSummary();
+    var mem_buf: [96]u8 = undefined;
+    const mem = formatMemory(&mem_buf, hk.platform.selfMemory());
     const evaluated = st.prompt_tokens - st.reused;
-    std.debug.print("\n\n[prompt {d} tok ({d} cached), {d:.1} tok/s | generated {d} tok, {d:.1} tok/s | memory {d:.0} MiB = {d:.0} private + {d:.0} mapped | threads {d}]\n", .{
+    std.debug.print("\n\n[prompt {d} tok ({d} cached), {d:.1} tok/s | generated {d} tok, {d:.1} tok/s | memory {s} | threads {d}]\n", .{
         st.prompt_tokens,
         st.reused,
         @as(f64, @floatFromInt(evaluated)) / @max(st.prompt_secs, 1e-9),
         st.produced,
         @as(f64, @floatFromInt(st.produced)) / @max(st.gen_secs, 1e-9),
-        m.rss_mib,
-        m.anon_mib,
-        m.file_mib,
+        mem,
         l.model.cpu.pool.size(),
     });
 }

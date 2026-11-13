@@ -156,6 +156,7 @@ const Layer = struct {
     s_add1: c.VkDescriptorSet = null,
     s_norm2: c.VkDescriptorSet = null,
     s_swiglu: c.VkDescriptorSet = null,
+    s_geglu: c.VkDescriptorSet = null,
     s_swiglu_pair: c.VkDescriptorSet = null,
     s_add2: c.VkDescriptorSet = null,
 };
@@ -233,6 +234,7 @@ pub const Engine = struct {
     /// Cooperative matrix attention for prompt batches; null when the device or the head size does not allow it.
     p_attn_cm: ?vk.Pipeline,
     p_swiglu: vk.Pipeline,
+    p_geglu: vk.Pipeline,
     p_swiglu_pair: vk.Pipeline,
     p_add: vk.Pipeline,
 
@@ -489,6 +491,7 @@ pub const Engine = struct {
             if (code) |bytes| self.p_attn_cm = try cx.createPipeline(bytes, 5, @sizeOf(AttnPush));
         }
         self.p_swiglu = try cx.createPipeline(@embedFile("spv/swiglu.spv"), 2, @sizeOf(CountPush));
+        self.p_geglu = try cx.createPipeline(@embedFile("spv/geglu.spv"), 2, @sizeOf(CountPush));
         self.p_add = try cx.createPipeline(@embedFile("spv/add.spv"), 2, @sizeOf(CountPush));
         self.p_swiglu_pair = try cx.createPipeline(@embedFile("spv/swiglu_pair.spv"), 2, @sizeOf(CountPush));
         self.p_qact = undefined;
@@ -610,7 +613,7 @@ pub const Engine = struct {
         for (self.pipes_mmv) |p| if (p) |pp| cx.destroyPipeline(pp);
         for (self.pipes_mm) |p| if (p) |pp| cx.destroyPipeline(pp);
         for (self.pipes_embed) |p| if (p) |pp| cx.destroyPipeline(pp);
-        for ([_]vk.Pipeline{ self.p_norm, self.p_rope, self.p_attn, self.p_attn_part, self.p_attn_combine, self.p_swiglu, self.p_swiglu_pair, self.p_add }) |p| cx.destroyPipeline(p);
+        for ([_]vk.Pipeline{ self.p_norm, self.p_rope, self.p_attn, self.p_attn_part, self.p_attn_combine, self.p_swiglu, self.p_geglu, self.p_swiglu_pair, self.p_add }) |p| cx.destroyPipeline(p);
         if (self.p_attn_cm) |p| cx.destroyPipeline(p);
         self.allocator.free(self.owners);
         self.ctx.deinit();
@@ -723,6 +726,7 @@ pub const Engine = struct {
                 try self.matSet(&l.gate, self.xb, self.gate, null);
                 try self.matSet(&l.up, self.xb, self.up, null);
                 l.s_swiglu = try cx.makeSet(self.p_swiglu, &.{ .{ .buf = self.gate }, .{ .buf = self.up } });
+                l.s_geglu = try cx.makeSet(self.p_geglu, &.{ .{ .buf = self.gate }, .{ .buf = self.up } });
             }
             try self.matSet(&l.down, self.gate, self.x, null);
             if (l.wq.set_q != null or l.down.set_q != null or l.gate.set_q != null) self.use_q = true;
@@ -947,7 +951,11 @@ pub const Engine = struct {
                 self.mat(&l.gate, n, 0, 0, false, 0);
                 self.mat(&l.up, n, 0, 0, false, 0);
                 self.barrier();
-                self.disp(.swiglu, self.p_swiglu, l.s_swiglu, std.mem.asBytes(&count_ffn), (count_ffn.n + 255) / 256, 1, 1);
+                if (cfg.ffn_act == .gelu_tanh) {
+                    self.disp(.swiglu, self.p_geglu, l.s_geglu, std.mem.asBytes(&count_ffn), (count_ffn.n + 255) / 256, 1, 1);
+                } else {
+                    self.disp(.swiglu, self.p_swiglu, l.s_swiglu, std.mem.asBytes(&count_ffn), (count_ffn.n + 255) / 256, 1, 1);
+                }
             }
             self.barrier();
             if (n <= 4) self.quantAct(self.s_qact_gate, @intCast(cfg.ffn_dim), n, 0, 0);

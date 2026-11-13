@@ -1922,6 +1922,21 @@ fn swigluKernel(gate: [*]f32, up: [*]const f32, n: u32) callconv(.kernel) void {
     gate[i] = (g / (1.0 + expf(-g))) * up[i];
 }
 
+inline fn tanhf(z: f32) f32 {
+    const e2z = expf(2.0 * z);
+    return (e2z - 1.0) / (e2z + 1.0);
+}
+
+fn gegluKernel(gate: [*]f32, up: [*]const f32, n: u32) callconv(.kernel) void {
+    const i = globalId();
+    if (i >= n) return;
+    const g = gate[i];
+    const k: f32 = 0.7978845608028654; // sqrt(2 / pi)
+    const g3 = g * g * g;
+    const gelu_val = 0.5 * g * (1.0 + tanhf(k * (g + 0.044715 * g3)));
+    gate[i] = gelu_val * up[i];
+}
+
 /// x[i] += y[i]
 fn addKernel(x: [*]f32, y: [*]const f32, n: u32) callconv(.kernel) void {
     const i = globalId();
@@ -1940,6 +1955,7 @@ comptime {
     @export(&attentionPartWarpKernel, .{ .name = "attention_part_warp" });
     @export(&attentionCombineKernel, .{ .name = "attention_combine" });
     @export(&swigluKernel, .{ .name = "swiglu" });
+    @export(&gegluKernel, .{ .name = "geglu" });
     @export(&toHalfKernel, .{ .name = "to_half" });
     @export(&addKernel, .{ .name = "add" });
 }

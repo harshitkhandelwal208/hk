@@ -5,7 +5,7 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 211,
+  "file_nodes": 212,
   "import_edges": 451,
   "unowned_files": 0,
   "status_counts": {
@@ -1545,6 +1545,14 @@
    "owner": "backend-vulkan"
   },
   {
+   "id": "file:shaders/geglu.comp",
+   "type": "file",
+   "label": "shaders/geglu.comp",
+   "lang": "glsl",
+   "loc": 15,
+   "owner": "backend-vulkan"
+  },
+  {
    "id": "file:shaders/mm.comp",
    "type": "file",
    "label": "shaders/mm.comp",
@@ -1845,7 +1853,7 @@
    "type": "file",
    "label": "src/cuda_device.zig",
    "lang": "zig",
-   "loc": 1945,
+   "loc": 1961,
    "owner": "backend-cuda-engine"
   },
   {
@@ -2037,7 +2045,7 @@
    "type": "file",
    "label": "src/gpu/engine.zig",
    "lang": "zig",
-   "loc": 824,
+   "loc": 829,
    "owner": "backend-cuda-engine"
   },
   {
@@ -2493,7 +2501,7 @@
    "type": "file",
    "label": "src/vk/engine.zig",
    "lang": "zig",
-   "loc": 1300,
+   "loc": 1308,
    "owner": "backend-vulkan"
   },
   {
@@ -3959,6 +3967,11 @@
   {
    "s": "backend-vulkan",
    "t": "file:shaders/flash_attention.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/geglu.comp",
    "type": "implemented_by"
   },
   {

@@ -158,6 +158,8 @@
 - [x] Multi-Model Execution & Memory Planner (`src/engine/planner.zig`):
   - Updated `planExecution` with accurate MoE weight scaling for routed experts.
   - Verified memory footprint parity between dense and MoE configurations.
+- [x] Cross-Backend GeGLU Non-Linearity Implementation:
+  - Implemented native `geglu` activation across Vulkan (`shaders/geglu.comp`, SPIR-V `src/vk/spv/geglu.spv`, dynamic dispatch in `src/vk/engine.zig`), CUDA (PTX kernel in `src/cuda_device.zig`), and ROCm/HIP (HSA code objects and dynamic dispatch in `src/gpu/engine.zig`), ensuring Gemma and GELU-tanh architectures run identically across all silicon backends.
 - [x] Multi-Architecture Execution Verification (`tests/test_engine.zig`):
   - Verified Gemma architecture execution with `gelu_tanh` activation and per-head `qk_norm`.
   - Verified Qwen2 architecture execution with `qkv_bias` projection vectors.
@@ -174,7 +176,7 @@
   - Passed `zig build test-e2e` (26/26 tests passed).
   - Passed `tests/bindings/run.sh` (8/8 language bindings pass).
   - Passed `python3 tests/test_zero_dependency.py`.
-  - Passed `python3 docs/graph/gen_graph.py --check` (80 curated nodes, 211 files, 451 edges, 0 errors).
+  - Passed `python3 docs/graph/gen_graph.py --check` (80 curated nodes, 212 files, 451 edges, 0 errors).
 
 
 

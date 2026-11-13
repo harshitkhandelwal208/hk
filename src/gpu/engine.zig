@@ -150,6 +150,7 @@ pub fn Make(comptime cuda: type) type {
         /// Tensor core prompt attention for this model's head size; null when the device has none or the size is not 64 / 128.
         attention_tc: ?cuda.Kernel,
         swiglu: cuda.Kernel,
+        geglu: cuda.Kernel,
         add: cuda.Kernel,
         to_half: cuda.Kernel,
         quantize_act: cuda.Kernel,
@@ -337,6 +338,7 @@ pub fn Make(comptime cuda: type) type {
                     else => null,
                 },
                 .swiglu = cuda.deviceKernel("swiglu") catch return error.DeviceFailed,
+                .geglu = cuda.deviceKernel("geglu") catch return error.DeviceFailed,
                 .add = cuda.deviceKernel("add") catch return error.DeviceFailed,
                 .to_half = cuda.deviceKernel("to_half") catch return error.DeviceFailed,
                 .quantize_act = cuda.deviceKernel("quantize_act") catch return error.DeviceFailed,
@@ -700,7 +702,10 @@ pub fn Make(comptime cuda: type) type {
                 try self.prepare(self.xb.addr, n * cfg.dim, n, &.{ l.w_gate, l.w_up });
                 try self.mm(l.w_gate, self.xb.addr, self.gate.addr, n);
                 try self.mm(l.w_up, self.xb.addr, self.up.addr, n);
-                cuda.launchKernel(self.k.swiglu, grid(n * cfg.ffn_dim, elem_threads), elem_threads, .{ self.gate.addr, self.up.addr, @as(u32, @intCast(n * cfg.ffn_dim)) }) catch |e| return mapErr(e);
+                switch (cfg.ffn_act) {
+                    .silu => cuda.launchKernel(self.k.swiglu, grid(n * cfg.ffn_dim, elem_threads), elem_threads, .{ self.gate.addr, self.up.addr, @as(u32, @intCast(n * cfg.ffn_dim)) }) catch |e| return mapErr(e),
+                    .gelu_tanh => cuda.launchKernel(self.k.geglu, grid(n * cfg.ffn_dim, elem_threads), elem_threads, .{ self.gate.addr, self.up.addr, @as(u32, @intCast(n * cfg.ffn_dim)) }) catch |e| return mapErr(e),
+                }
                 try self.prepare(self.gate.addr, n * cfg.ffn_dim, n, &.{l.w_down});
                 try self.mm(l.w_down, self.gate.addr, self.tmp.addr, n);
                 try self.addInto(x, self.tmp.addr, n * cfg.dim);

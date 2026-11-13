@@ -50,6 +50,7 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - `src/distributed.zig`: `DeviceRank`, `CollectiveContext` with in-place SIMD `allreduceSum`, `allgather`, `broadcast`, and `columnParallelForward` / `rowParallelForward` linear layer sharding with exact GEMM parity.
   - `src/arch_search.zig`: Constrained neural architecture search (§113), Pareto frontier optimization across parameter capacity, decode throughput, and memory footprint, and hardware-aware queries (§114: best architecture under VRAM budget, optimal quantization format, and memory bandwidth saturation).
   - `tests/test_engine.zig`: Added multi-architecture execution tests verifying Gemma (`gelu_tanh` and `qk_norm`) and Qwen2 (`qkv_bias`) forward passes with full numerical stability and determinism.
+  - Cross-Backend Hardware-Neutral GeGLU: Implemented native `geglu` activation across Vulkan (`shaders/geglu.comp`, SPIR-V `src/vk/spv/geglu.spv`, dynamic activation dispatch in `src/vk/engine.zig`), CUDA (PTX kernel in `src/cuda_device.zig`), and ROCm/HIP (HSA code objects and kernel dispatch in `src/gpu/engine.zig`), ensuring Gemma and modern architectures run identically on all silicon without CPU fallback.
   - Universal hardware-neutral invariant: HK is not specialized for any single architecture (e.g. LLaMA only) or vendor silicon (e.g. NVIDIA only); it executes universally across CPU, Vulkan, CUDA, and ROCm/HIP.
 
 **Verification results (all executed on this machine):**
@@ -60,7 +61,7 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
 - `zig build test-e2e`: **26/26 pass (0 failures)**.
 - `tests/bindings/run.sh`: **8/8 language suites pass (0 failures: C, C++, Rust, Go, C#, Java, TypeScript)**.
 - `python3 tests/test_zero_dependency.py`: **pass (0 failures)**.
-- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 211 files, 451 import edges, 0 unowned files, 0 errors**.
+- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 212 files, 451 import edges, 0 unowned files, 0 errors**.
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 

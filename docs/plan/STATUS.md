@@ -23,7 +23,7 @@ user-facing claims; if this file and the code disagree, **the code wins** — fi
 
 - `zig build test`: **257 passed, 7 skipped** in Debug, ReleaseFast, `-Dcpu=x86_64_v3` and `-Dcpu=x86_64` (2026-11-13); `test-e2e` **26/26**; `tests/bindings/run.sh` 8 suites, 0 failed; `python3 tests/test_zero_dependency.py` passed with 0 dependencies.
   The `hk-cuda-tests` (7) pass; 7 ROCm device tests skip gracefully on non-AMD silicon.
-- Counts: ~264 Zig `test` blocks across 211 files and 80 curated nodes.
+- Counts: ~264 Zig `test` blocks across 212 files and 80 curated nodes.
 - Performance (from `benchmarks/results.md`, CPU, 6 threads, 2026-10-05): prefill 91–240 % of llama.cpp (faster on 8/10 models), decode 92–100 %, private memory 5–9× lower. Vulkan GPU: ~25–40 % of llama.cpp prefill, 65–80 % decode, one NVIDIA card only.
 
 ## Two kernel stacks — read before touching any kernel
@@ -83,7 +83,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 16 | GPU attention (FlashAttention-style, Tensor Core) | PARTIAL | `shaders/attention.comp` exists; no cooperative-matrix path |
 | 16 | MHA/GQA | DONE | Sliding-window attention (SWA) implemented in `engine/attention_kernel.zig` and `config.zig`; local/global, MQA-specific, MLA: NOT STARTED |
 | 17 | Softmax: max-subtract, underflow prune | DONE (legacy stack) | no numerical-error test suite for approximations found |
-| 18–19 | RMSNorm, QK-norm, SiLU, GELU(tanh) | DONE (CPU+Vulkan) | LayerNorm/GroupNorm, QuickGELU, GeGLU, ReGLU: legacy `layerNormF32` only |
+| 18–19 | RMSNorm, QK-norm, SiLU, GELU(tanh), GeGLU | DONE (CPU+Vulkan+CUDA+ROCm) | Native RMSNorm, QK-norm, SiLU, and GeGLU across CPU, Vulkan (`geglu.comp`), CUDA PTX (`cuda_device.zig`), and ROCm HSA kernels (`gpu/engine.zig`). LayerNorm/GroupNorm: legacy `layerNormF32`. |
 | 20 | FP8 LUT | PARTIAL | E4M3 comptime LUT (legacy). E5M2, vectorized/GPU/TC FP8, scale metadata: NOT STARTED |
 | 21 | MXFP4 / NVFP4 | PARTIAL | CPU kernels + decode done, Vulkan **not yet**; CUDA/ROCm/Metal none |
 | 56 | CPU backend matrix | PARTIAL | see rows 10–13 |

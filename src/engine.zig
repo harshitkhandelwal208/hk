@@ -6,6 +6,7 @@ pub const matmul = @import("engine/matmul.zig");
 pub const model = @import("engine/model.zig");
 pub const kv = @import("engine/kv.zig");
 pub const session = @import("engine/session.zig");
+pub const planner = @import("engine/planner.zig");
 
 pub const abi_ops = @import("engine/abi_ops.zig");
 pub const Model = model.Model;

@@ -44,6 +44,7 @@ pub const c_api = @import("c_api.zig");
 pub const cuda = @import("cuda.zig");
 pub const hip = @import("hip.zig");
 pub const distributed = @import("distributed.zig");
+pub const models = @import("models/registry.zig");
 
 // Re-export key structs
 pub const FileHeader = format.FileHeader;

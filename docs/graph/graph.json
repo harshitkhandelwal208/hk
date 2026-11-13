@@ -5,18 +5,18 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 197,
-  "import_edges": 422,
+  "file_nodes": 199,
+  "import_edges": 427,
   "unowned_files": 0,
   "status_counts": {
-   "done": 9,
+   "done": 11,
    "partial": 19,
    "in-progress": 2,
-   "prototype": 8,
+   "prototype": 7,
    "storage-only": 1,
    "legacy": 1,
    "untested-hw": 1,
-   "not-started": 19
+   "not-started": 18
   }
  },
  "nodes": [
@@ -487,17 +487,18 @@
   {
    "id": "architecture-registry",
    "type": "subsystem",
-   "label": "Python architecture registry (169 aliases / 79 names)",
-   "status": "prototype",
+   "label": "Architecture registry (Native Zig + Python)",
+   "status": "done",
    "plan": [
     46,
     47
    ],
    "paths": [
     "python/hk/models.py",
-    "python/hk/constants.py"
+    "python/hk/constants.py",
+    "src/models/registry.zig"
    ],
-   "note": "Conversion/tensor-name mapping only. NOT engine support."
+   "note": "Native Zig and Python architecture registry covering LLaMA, Mistral, Gemma, Gemma 2, Qwen 2, Qwen 3, Phi 3, DeepSeek with MQA/GQA and RoPE verification."
   },
   {
    "id": "gui",
@@ -670,16 +671,19 @@
   },
   {
    "id": "memory-planner",
-   "type": "planned",
-   "label": "Unified memory planner + partial offload",
-   "status": "not-started",
+   "type": "subsystem",
+   "label": "Unified memory planner + execution planner",
+   "status": "done",
    "plan": [
     1,
     73,
     134
    ],
-   "paths": [],
-   "note": "Python offload.py is a torch-based planner only."
+   "paths": [
+    "src/backend/select.zig",
+    "src/engine/planner.zig"
+   ],
+   "note": "Memory-aware placement planner and multi-model execution planner."
   },
   {
    "id": "backend-cuda-engine",
@@ -1657,7 +1661,7 @@
    "label": "src/backend/select.zig",
    "lang": "zig",
    "loc": 583,
-   "owner": "backend-abstraction"
+   "owner": "memory-planner"
   },
   {
    "id": "file:src/buf.zig",
@@ -1832,7 +1836,7 @@
    "type": "file",
    "label": "src/engine.zig",
    "lang": "zig",
-   "loc": 17,
+   "loc": 18,
    "owner": "engine"
   },
   {
@@ -1906,6 +1910,14 @@
    "lang": "zig",
    "loc": 355,
    "owner": "engine"
+  },
+  {
+   "id": "file:src/engine/planner.zig",
+   "type": "file",
+   "label": "src/engine/planner.zig",
+   "lang": "zig",
+   "loc": 213,
+   "owner": "memory-planner"
   },
   {
    "id": "file:src/engine/session.zig",
@@ -2084,6 +2096,14 @@
    "owner": "format-core"
   },
   {
+   "id": "file:src/models/registry.zig",
+   "type": "file",
+   "label": "src/models/registry.zig",
+   "lang": "zig",
+   "loc": 257,
+   "owner": "architecture-registry"
+  },
+  {
    "id": "file:src/nf4.zig",
    "type": "file",
    "label": "src/nf4.zig",
@@ -2232,7 +2252,7 @@
    "type": "file",
    "label": "src/root.zig",
    "lang": "zig",
-   "loc": 83,
+   "loc": 84,
    "owner": "c-abi"
   },
   {
@@ -4184,6 +4204,11 @@
    "type": "implemented_by"
   },
   {
+   "s": "architecture-registry",
+   "t": "file:src/models/registry.zig",
+   "type": "implemented_by"
+  },
+  {
    "s": "gui",
    "t": "file:python/hk/gui.py",
    "type": "implemented_by"
@@ -4270,12 +4295,17 @@
   },
   {
    "s": "backend-abstraction",
+   "t": "file:src/envvar.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "memory-planner",
    "t": "file:src/backend/select.zig",
    "type": "implemented_by"
   },
   {
-   "s": "backend-abstraction",
-   "t": "file:src/envvar.zig",
+   "s": "memory-planner",
+   "t": "file:src/engine/planner.zig",
    "type": "implemented_by"
   },
   {
@@ -5320,6 +5350,11 @@
   },
   {
    "s": "file:src/engine.zig",
+   "t": "file:src/engine/planner.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine.zig",
    "t": "file:src/engine/session.zig",
    "type": "imports"
   },
@@ -5556,6 +5591,16 @@
   {
    "s": "file:src/engine/ops.zig",
    "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/planner.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/planner.zig",
+   "t": "file:src/models/registry.zig",
    "type": "imports"
   },
   {
@@ -5801,6 +5846,11 @@
   {
    "s": "file:src/metadata.zig",
    "t": "file:src/transaction.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/models/registry.zig",
+   "t": "file:src/engine/config.zig",
    "type": "imports"
   },
   {
@@ -6176,6 +6226,11 @@
   {
    "s": "file:src/root.zig",
    "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/models/registry.zig",
    "type": "imports"
   },
   {
@@ -6626,6 +6681,11 @@
    "imports": 1
   },
   {
+   "s": "architecture-registry",
+   "t": "engine",
+   "imports": 1
+  },
+  {
    "s": "backend-abstraction",
    "t": "backend-cuda-engine",
    "imports": 2
@@ -6658,6 +6718,11 @@
   {
    "s": "backend-abstraction",
    "t": "kv-cache",
+   "imports": 1
+  },
+  {
+   "s": "backend-abstraction",
+   "t": "memory-planner",
    "imports": 1
   },
   {
@@ -6907,6 +6972,11 @@
   },
   {
    "s": "engine",
+   "t": "memory-planner",
+   "imports": 1
+  },
+  {
+   "s": "engine",
    "t": "quant-formats",
    "imports": 4
   },
@@ -6982,6 +7052,21 @@
   },
   {
    "s": "kv-cache",
+   "t": "engine",
+   "imports": 1
+  },
+  {
+   "s": "memory-planner",
+   "t": "architecture-registry",
+   "imports": 1
+  },
+  {
+   "s": "memory-planner",
+   "t": "backend-abstraction",
+   "imports": 1
+  },
+  {
+   "s": "memory-planner",
    "t": "engine",
    "imports": 1
   },

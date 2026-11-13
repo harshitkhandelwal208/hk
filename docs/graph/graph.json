@@ -5,14 +5,14 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 203,
-  "import_edges": 433,
+  "file_nodes": 204,
+  "import_edges": 435,
   "unowned_files": 0,
   "status_counts": {
-   "done": 13,
+   "done": 14,
    "partial": 18,
    "in-progress": 2,
-   "prototype": 7,
+   "prototype": 6,
    "storage-only": 1,
    "legacy": 1,
    "untested-hw": 1,
@@ -582,17 +582,21 @@
   {
    "id": "trainer",
    "type": "subsystem",
-   "label": "HKTrainer / LoRA / QLoRA",
-   "status": "prototype",
+   "label": "Native Training / LoRA / QLoRA / Distillation",
+   "status": "done",
    "plan": [
     40,
-    41
+    41,
+    44,
+    161
    ],
    "paths": [
+    "src/training.zig",
+    "python/hk/tensor.py",
     "python/hk/trainer.py",
     "python/hk/adaptive/self_play.py"
    ],
-   "note": "PyTorch-based; no native/distributed trainer; engine can't apply adapters."
+   "note": "Native autograd derivatives with gradcheck, frozen-base LoRA/QLoRA adapter training, AdamW optimizer, QAT, and distillation (plan \u00a741, \u00a744, \u00a7150, \u00a7161)."
   },
   {
    "id": "self-training",
@@ -1433,7 +1437,7 @@
    "label": "python/hk/tensor.py",
    "lang": "python",
    "loc": 762,
-   "owner": "python-sdk"
+   "owner": "trainer"
   },
   {
    "id": "file:python/hk/tokenizer.py",
@@ -2288,7 +2292,7 @@
    "type": "file",
    "label": "src/root.zig",
    "lang": "zig",
-   "loc": 86,
+   "loc": 87,
    "owner": "c-abi"
   },
   {
@@ -2394,6 +2398,14 @@
    "lang": "zig",
    "loc": 134,
    "owner": "tokenizer"
+  },
+  {
+   "id": "file:src/training.zig",
+   "type": "file",
+   "label": "src/training.zig",
+   "lang": "zig",
+   "loc": 544,
+   "owner": "trainer"
   },
   {
    "id": "file:src/transaction.zig",
@@ -4231,11 +4243,6 @@
   },
   {
    "s": "python-sdk",
-   "t": "file:python/hk/tensor.py",
-   "type": "implemented_by"
-  },
-  {
-   "s": "python-sdk",
    "t": "file:python/hk/tokenizer.py",
    "type": "implemented_by"
   },
@@ -4306,7 +4313,17 @@
   },
   {
    "s": "trainer",
+   "t": "file:python/hk/tensor.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "trainer",
    "t": "file:python/hk/trainer.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "trainer",
+   "t": "file:src/training.zig",
    "type": "implemented_by"
   },
   {
@@ -6401,6 +6418,11 @@
   },
   {
    "s": "file:src/root.zig",
+   "t": "file:src/training.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
    "t": "file:src/transaction.zig",
    "type": "imports"
   },
@@ -6542,6 +6564,11 @@
   {
    "s": "file:src/tokenizer/regex.zig",
    "t": "file:src/tokenizer/unicode.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/training.zig",
+   "t": "file:src/format.zig",
    "type": "imports"
   },
   {
@@ -7288,8 +7315,13 @@
   },
   {
    "s": "trainer",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "trainer",
    "t": "python-sdk",
-   "imports": 2
+   "imports": 3
   },
   {
    "s": "transaction",

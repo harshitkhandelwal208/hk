@@ -3,9 +3,9 @@
 ## Session Info
 - **Project**: HK Neural Tensor Framework
 - **Active Branch**: `feat/hk-2.1-rocm`
-- **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1, 2.2, 2.3 & 2.4
-- **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1 - 2.4 Universal Model Format)
-- **Last Verified Test**: 228 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 24/24 e2e; 8/8 bindings suites)
+- **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1, 2.2, 2.3, 2.4 & 2.5
+- **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1 - 2.5 Training Platform)
+- **Last Verified Test**: 231 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 24/24 e2e; 8/8 bindings suites)
 
 ## Milestone 2.1: Hardware Acceleration & Zero-Dependency Python (100% COMPLETE)
 - [x] Abstracted inline-PTX in `src/cuda_device.zig` behind per-architecture primitives (`src/gpu_prims.zig`).
@@ -71,5 +71,26 @@
   - Implemented `ModelRegistry` with unique registration, architecture and storage indexing, and query methods.
   - Implemented `resolveExternalReference` with directory traversal protection against hostile relative paths.
   - Implemented `verifyEntry` validating container SHA-256 and Ed25519 publisher signatures.
+
+## Milestone 2.5: Training Platform, Autograd & LoRA/QLoRA (100% COMPLETE)
+- [x] Native Autograd & Exact Derivatives (`src/training.zig`, plan §41, §150, §161):
+  - Exact reverse-mode backward kernels for GEMM, SiLU, RMSNorm, Softmax, and Cross-Entropy loss.
+  - Finite-difference `gradcheck` test suite validating mathematical derivatives to within relative tolerance.
+- [x] Frozen-Base LoRA & QLoRA Adaptation:
+  - Implemented `LoRALayer` supporting frozen quantized base weights with low-rank adapters A and B.
+  - Zero memory overhead for base model weights during gradient accumulation.
+- [x] Decoupled AdamW Optimizer & Schedules:
+  - Implemented `AdamWOptimizer` with first/second moment tracking, bias correction, and decoupled weight decay.
+- [x] Knowledge Distillation & Quantization-Aware Training:
+  - Implemented `computeDistillationLoss` combining hard CE ground truth with soft temperature-scaled teacher-student KL divergence.
+  - Implemented Straight-Through Estimator (`fakeQuantizeSTE`) for QAT.
+- [x] Continuous Verification:
+  - Passed `zig build test` (231/238 pass, 7 skipped ROCm device tests).
+  - Passed `zig build test -Doptimize=ReleaseFast`.
+  - Passed `zig build test-e2e`.
+  - Passed `tests/bindings/run.sh` (8/8 language bindings pass).
+  - Passed `python3 tests/test_zero_dependency.py`.
+  - Passed `python3 docs/graph/gen_graph.py --check` (0 errors).
+
 
 

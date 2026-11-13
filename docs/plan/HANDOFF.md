@@ -28,7 +28,8 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - `src/format.zig`, `src/tensor_toc.zig`, `src/reader.zig`, `src/writer.zig`: V2 format specification (`VERSION_MAJOR_V2` = 2, `HAS_V2_EXTENSIONS`), per-tensor cryptographic SHA-256 hash (`HAS_PER_TENSOR_HASH`), `delta_ref` (0x33) and `external_ref` (0x34) in `StorageType`, `tile_128x128` (0x08) and `backend_layout` (0x09) in `TileLayout`, `writeAtomic` via `.partial` + rename.
   - `src/registry.zig`: `ModelRegistry`, `ModelIdentity`, `RegistryEntry`, `HardwareCompatibility`, external shard resolution with directory traversal prevention, and cryptographic container validation (`verifyEntry`).
   - `src/integrity.zig`: `SignedManifest`, `signManifest`, `verifyPublisher`, `verifyContainerWithManifest`, and `verifyFileWithManifest` using Ed25519, timestamp validation, and fail-closed tampering detection.
-- **Milestone 2.5 (2:4 Structured Sparsity & Block-Sparse GEMM)**:
+- **Milestone 2.5 (Training Platform, Autograd & LoRA/QLoRA)**:
+  - `src/training.zig`: native autograd derivatives (GEMM, SiLU, RMSNorm, Softmax, CrossEntropy), finite-difference gradcheck, frozen-base `LoRALayer` (adapters A & B, zero memory for base weights), `AdamWOptimizer` with decoupled weight decay, `fakeQuantizeSTE` for Quantization-Aware Training (QAT), and `computeDistillationLoss` (teacher-student soft KL + hard CE).
   - `src/sparsity.zig`: 2:4 structured sparse GEMV & GEMM, Block Sparse Row (BSR) GEMV & GEMM, `encodeBSR_F32`, `decodeBSR_F32`. Memory-first zero-alloc streaming; numerical parity vs dense GEMM verified across block shapes (4x4, 8x8, 16x16) and sizes.
   - Vulkan compute shaders `shaders/mm_sparse_2_4.comp` and `shaders/mm_bsr.comp` compiled to SPIR-V in `src/vk/spv/` via `glslc`.
 - **Milestone 2.6 (Net2Net Model Surgery)**:
@@ -40,14 +41,14 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - Verified across all ISA targets and language bindings.
 
 **Verification results (all executed on this machine):**
-- `zig build test`: **228 pass, 7 skip (0 failures)**.
-- `zig build test -Doptimize=ReleaseFast`: **228 pass, 7 skip (0 failures)**.
+- `zig build test`: **231 pass, 7 skip (0 failures)**.
+- `zig build test -Doptimize=ReleaseFast`: **231 pass, 7 skip (0 failures)**.
 - `zig build test -Dcpu=x86_64_v3`: **pass (0 failures)**.
 - `zig build test -Dcpu=x86_64`: **pass (0 failures)**.
 - `zig build test-e2e`: **24/24 pass (0 failures)**.
 - `tests/bindings/run.sh`: **8/8 language suites pass (0 failures: C, C++, Rust, Go, C#, Java, TypeScript)**.
 - `python3 tests/test_zero_dependency.py`: **pass (0 failures)**.
-- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 203 files, 433 import edges, 0 unowned files, 0 errors**.
+- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 204 files, 435 import edges, 0 unowned files, 0 errors**.
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 

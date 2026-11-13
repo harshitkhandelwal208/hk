@@ -46,6 +46,7 @@ pub const hip = @import("hip.zig");
 pub const distributed = @import("distributed.zig");
 pub const models = @import("models/registry.zig");
 pub const registry = @import("registry.zig");
+pub const training = @import("training.zig");
 
 // Re-export key structs
 pub const FileHeader = format.FileHeader;

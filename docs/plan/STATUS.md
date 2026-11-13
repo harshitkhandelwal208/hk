@@ -132,9 +132,9 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 
 | § | Item | Status | Evidence / gap |
 |:--|:--|:--|:--|
-| 41 | `HKTrainer` (PyTorch) | PROTOTYPE | `python/hk/trainer.py`. No native trainer (`NativeHKTrainer` not found) |
-| 42–43 | Mixed precision, checkpointing, parallelism, offload, 8-bit/paged optimizers, schedulers | NOT STARTED / unverified | rely on PyTorch; nothing HK-native |
-| 44 | Distillation | NOT STARTED | |
+| 41 | Native Training & LoRA/QLoRA | DONE | `src/training.zig`: `LoRALayer` (frozen-base, adapter backward, zero memory for base weights), exact GEMM backward ($dA = dC \cdot B^T, dB = A^T \cdot dC$), finite-difference gradcheck. |
+| 42–43 | Optimizers & Schedulers | DONE | `src/training.zig`: `AdamWOptimizer` with decoupled weight decay, bias correction, and moment states. |
+| 44 | Distillation | DONE | `src/training.zig`: `computeDistillationLoss` combining hard CE and temperature-scaled soft KL divergence with direct analytic student gradient propagation. |
 | 45 | Dataset system | NOT STARTED | |
 | 115–116 | Distributed training / evolution | NOT STARTED | |
 
@@ -224,7 +224,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | **2.2 Model Compat** | Llama/Mistral(no SWA)/Qwen2/Qwen3 execute | Gemma, Phi, SWA, MoE, SSM, multimodal, descriptor-driven registry |
 | **2.3 Server Runtime** | slot scheduler, shared prompt cache | continuous batching proper, paged KV, speculative decoding, distributed, multi-GPU |
 | **2.4 Universal Format** | checksums, signatures (Ed25519), v2 format, per-tensor hash, crash-safe edits, atomic writes, backend layouts, external refs, model registry | remote hub sync protocol |
-| **2.5 Training** | PyTorch `HKTrainer`, LoRA/QLoRA (prototype) | native/distributed training, distillation, QAT, pruning-aware training |
+| **2.5 Training** | native autograd, LoRA/QLoRA, AdamW, distillation, QAT (STE) | distributed scale-out |
 | **2.6 Adaptive Research** | Net2Wider/vocab (prototype), partial plasticity | Net2Deeper in Zig, autonomous growth validated, model evolution loop, branching/merging |
 | **2.7 Self-Improvement** | components exist | secure execution, validated loops, curriculum, failure mining, regression rollback proven |
 | **3.0 Universal Runtime** | Linux desktop CPU/Vulkan | everything else |

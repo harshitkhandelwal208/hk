@@ -5,9 +5,9 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 189,
-  "import_edges": 438,
-  "unowned_files": 1,
+  "file_nodes": 194,
+  "import_edges": 421,
+  "unowned_files": 0,
   "status_counts": {
    "done": 9,
    "partial": 16,
@@ -636,7 +636,8 @@
     137
    ],
    "paths": [
-    "src/backend"
+    "src/backend",
+    "src/envvar.zig"
    ],
    "note": "Stage 1a: tagged-union Device over whole-network executors (Vulkan only today); Model goes through it. CPU is still inline in engine/model.zig; no capability table, selection or memory planner yet."
   },
@@ -1159,7 +1160,15 @@
    "type": "file",
    "label": "python/hk/__init__.py",
    "lang": "python",
-   "loc": 231,
+   "loc": 297,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/_lazy.py",
+   "type": "file",
+   "label": "python/hk/_lazy.py",
+   "lang": "python",
+   "loc": 50,
    "owner": "python-sdk"
   },
   {
@@ -1287,7 +1296,7 @@
    "type": "file",
    "label": "python/hk/format.py",
    "lang": "python",
-   "loc": 266,
+   "loc": 289,
    "owner": "python-sdk"
   },
   {
@@ -1343,7 +1352,7 @@
    "type": "file",
    "label": "python/hk/native.py",
    "lang": "python",
-   "loc": 2721,
+   "loc": 2726,
    "owner": "python-sdk"
   },
   {
@@ -1367,7 +1376,7 @@
    "type": "file",
    "label": "python/hk/pipeline.py",
    "lang": "python",
-   "loc": 190,
+   "loc": 204,
    "owner": "python-sdk"
   },
   {
@@ -1399,7 +1408,15 @@
    "type": "file",
    "label": "python/hk/remote.py",
    "lang": "python",
-   "loc": 297,
+   "loc": 301,
+   "owner": "python-sdk"
+  },
+  {
+   "id": "file:python/hk/tensor.py",
+   "type": "file",
+   "label": "python/hk/tensor.py",
+   "lang": "python",
+   "loc": 762,
    "owner": "python-sdk"
   },
   {
@@ -1767,7 +1784,7 @@
    "type": "file",
    "label": "src/cuda_device.zig",
    "lang": "zig",
-   "loc": 1791,
+   "loc": 1945,
    "owner": "backend-cuda-engine"
   },
   {
@@ -1880,7 +1897,7 @@
    "label": "src/envvar.zig",
    "lang": "zig",
    "loc": 20,
-   "owner": null
+   "owner": "backend-abstraction"
   },
   {
    "id": "file:src/expansion.zig",
@@ -1919,7 +1936,7 @@
    "type": "file",
    "label": "src/gpu_prims.zig",
    "lang": "zig",
-   "loc": 150,
+   "loc": 193,
    "owner": "backend-cuda-engine"
   },
   {
@@ -1943,7 +1960,7 @@
    "type": "file",
    "label": "src/hip.zig",
    "lang": "zig",
-   "loc": 474,
+   "loc": 579,
    "owner": "backend-rocm-engine"
   },
   {
@@ -2555,6 +2572,14 @@
    "owner": "tests-suite"
   },
   {
+   "id": "file:tests/test_tensor.py",
+   "type": "file",
+   "label": "tests/test_tensor.py",
+   "lang": "python",
+   "loc": 134,
+   "owner": "tests-suite"
+  },
+  {
    "id": "file:tests/test_torch_integration.py",
    "type": "file",
    "label": "tests/test_torch_integration.py",
@@ -2571,11 +2596,27 @@
    "owner": "tests-suite"
   },
   {
+   "id": "file:tests/test_zero_dependency.py",
+   "type": "file",
+   "label": "tests/test_zero_dependency.py",
+   "lang": "python",
+   "loc": 87,
+   "owner": "tests-suite"
+  },
+  {
    "id": "file:tests/tiny_model_tool.zig",
    "type": "file",
    "label": "tests/tiny_model_tool.zig",
    "lang": "zig",
    "loc": 48,
+   "owner": "tests-suite"
+  },
+  {
+   "id": "file:tests/wheel_smoke.py",
+   "type": "file",
+   "label": "tests/wheel_smoke.py",
+   "lang": "python",
+   "loc": 94,
    "owner": "tests-suite"
   },
   {
@@ -3997,6 +4038,11 @@
   },
   {
    "s": "python-sdk",
+   "t": "file:python/hk/_lazy.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
    "t": "file:python/hk/adaptive/__init__.py",
    "type": "implemented_by"
   },
@@ -4083,6 +4129,11 @@
   {
    "s": "python-sdk",
    "t": "file:python/hk/remote.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "python-sdk",
+   "t": "file:python/hk/tensor.py",
    "type": "implemented_by"
   },
   {
@@ -4188,6 +4239,11 @@
   {
    "s": "backend-abstraction",
    "t": "file:src/backend/select.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-abstraction",
+   "t": "file:src/envvar.zig",
    "type": "implemented_by"
   },
   {
@@ -4332,6 +4388,11 @@
   },
   {
    "s": "tests-suite",
+   "t": "file:tests/test_tensor.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
    "t": "file:tests/test_torch_integration.py",
    "type": "implemented_by"
   },
@@ -4342,7 +4403,17 @@
   },
   {
    "s": "tests-suite",
+   "t": "file:tests/test_zero_dependency.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
    "t": "file:tests/tiny_model_tool.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "tests-suite",
+   "t": "file:tests/wheel_smoke.py",
    "type": "implemented_by"
   },
   {
@@ -4372,112 +4443,7 @@
   },
   {
    "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/adaptive/__init__.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/benchmark.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/composite.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/config.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/flax.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/format.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/gguf_parser.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/gui.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/hf_mapper.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/jax.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/modeling.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/native.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/numpy.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/offload.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/pipeline.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/pruning.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/quantization.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/raw.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/remote.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/tokenizer.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/torch.py",
-   "type": "imports"
-  },
-  {
-   "s": "file:python/hk/__init__.py",
-   "t": "file:python/hk/trainer.py",
+   "t": "file:python/hk/_lazy.py",
    "type": "imports"
   },
   {
@@ -4611,6 +4577,11 @@
    "type": "imports"
   },
   {
+   "s": "file:python/hk/format.py",
+   "t": "file:python/hk/_lazy.py",
+   "type": "imports"
+  },
+  {
    "s": "file:python/hk/gguf_parser.py",
    "t": "file:python/hk/native.py",
    "type": "imports"
@@ -4687,6 +4658,11 @@
   },
   {
    "s": "file:python/hk/native.py",
+   "t": "file:python/hk/_lazy.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/native.py",
    "t": "file:python/hk/format.py",
    "type": "imports"
   },
@@ -4757,12 +4733,22 @@
   },
   {
    "s": "file:python/hk/remote.py",
+   "t": "file:python/hk/_lazy.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/remote.py",
    "t": "file:python/hk/format.py",
    "type": "imports"
   },
   {
    "s": "file:python/hk/remote.py",
    "t": "file:python/hk/quantization.py",
+   "type": "imports"
+  },
+  {
+   "s": "file:python/hk/tensor.py",
+   "t": "file:python/hk/native.py",
    "type": "imports"
   },
   {
@@ -6654,6 +6640,11 @@
   },
   {
    "s": "backend-cuda-standalone",
+   "t": "backend-abstraction",
+   "imports": 1
+  },
+  {
+   "s": "backend-cuda-standalone",
    "t": "backend-cuda-engine",
    "imports": 1
   },
@@ -6664,12 +6655,22 @@
   },
   {
    "s": "backend-rocm-engine",
+   "t": "backend-abstraction",
+   "imports": 1
+  },
+  {
+   "s": "backend-rocm-engine",
    "t": "backend-cuda-engine",
    "imports": 2
   },
   {
    "s": "backend-rocm-engine",
    "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "backend-abstraction",
    "imports": 1
   },
   {
@@ -6964,18 +6965,8 @@
   },
   {
    "s": "python-sdk",
-   "t": "gui",
-   "imports": 1
-  },
-  {
-   "s": "python-sdk",
    "t": "nf4-dq",
-   "imports": 4
-  },
-  {
-   "s": "python-sdk",
-   "t": "pruning",
-   "imports": 1
+   "imports": 3
   },
   {
    "s": "python-sdk",
@@ -6985,7 +6976,7 @@
   {
    "s": "python-sdk",
    "t": "trainer",
-   "imports": 2
+   "imports": 1
   },
   {
    "s": "quant-formats",
@@ -7073,7 +7064,5 @@
    "imports": 1
   }
  ],
- "unowned_files": [
-  "src/envvar.zig"
- ]
+ "unowned_files": []
 }

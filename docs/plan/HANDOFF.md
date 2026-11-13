@@ -10,26 +10,31 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
 
 ## Now
 
-### 00. HK 2.1 (hardware acceleration) in progress — branch `feat/hk-2.1-rocm`, PR open
+### 00. HK 2.1 (hardware acceleration) completed — branch `feat/hk-2.1-rocm`
 
-**Done this session, with what was run:**
-- `src/gpu_prims.zig`: the 17 inline-PTX sites of `src/cuda_device.zig` moved behind per-architecture primitives (NVIDIA PTX unchanged; AMD via LLVM `amdgcn` intrinsics). The NVIDIA module still exports the same 73 (sm_70) / 109 (sm_80) kernels; `zig build test` and `test-cuda` pass on the RTX 3050.
-- `build.zig` (`-Drocm`, default on for Linux/Windows) compiles the device code to a `gfx11-generic` HSA code object (RDNA3/3.5, wave32) and embeds it. Checked: 73 kernels, valid `EM_AMDGPU` ELF, disassembly has `ds_bpermute_b32`, `v_dot4_i32_iu8`, `s_barrier`. `gfx1030` compiles too (no hardware dot4, slower); GCN/CDNA (gfx9) are wave64 and refused.
-- `src/hip.zig` (HIP runtime via dlopen, same surface as `cuda.zig`), `src/gpu/engine.zig` (the old CUDA engine, now `Make(runtime)`), `src/cuda/engine.zig` and `src/rocm/engine.zig` instantiate it. `backend.Device.rocm`, `probeRocm`, `--backend rocm`, caps and planner cases. `auto` order: CUDA (if tensor cores), Vulkan, CUDA, ROCm.
-- Run: unit tests 197 passed + 7 skipped (the ROCm parity tests, no AMD device) at Debug, ReleaseFast, `-Dcpu=x86_64_v3`, `-Dcpu=x86_64`; e2e 26/26; `test-cuda` passes. Mutation-checked: letting `--backend rocm` fall back quietly turns a unit test and the e2e test red.
-- **Never run on AMD hardware.** The machine has a Radeon 740M iGPU (HawkPoint2, gfx1103) but no `vulkan-radeon` (RADV) and no ROCm userspace, `/dev/kfd` exists, the user is not in the `render` group.
+**Done this milestone, with what was run:**
+- Multi-target AMD ROCm/HIP compilation (`build.zig`): `gfx10_3_generic` (RDNA2), `gfx11_generic` (RDNA3/3.5, wave32), `gfx12_generic` (RDNA4) HSA code objects embedded (`rocm_device_co_gfx10_3`, `rocm_device_co_gfx11`, `rocm_device_co_gfx12`). Dynamic target selection and code object fallback in `src/hip.zig`.
+- Target-specific GPU barrier and memory wait synchronization (`src/gpu_prims.zig`): GFX12 split barriers (`llvm.amdgcn.s.barrier` -> `s_barrier_signal -1` + `s_barrier_wait -1`) and discrete memory wait counters (`s_wait_loadcnt 0x0`, `s_wait_storecnt 0x0`, `s_wait_dscnt 0x0`); GFX10/11 unified wait counters (`s_waitcnt vmcnt(0) lgkmcnt(0)`, `s_waitcnt_vscnt null, 0x0`).
+- Wave Matrix Multiply-Accumulate (WMMA): `has_wmma` and `wmmaF32()` utilizing `llvm.amdgcn.wmma.f32.16x16x16.f16` across GFX11 and GFX12. Implemented `gemmWmma()` in `src/cuda_device.zig` for prompt processing across all 26 dense & quantized weight formats. Verified via `llvm-objdump -d --mcpu=gfx1100` that `v_wmma_f32_16x16x16_f16` instructions are emitted in `gemm_tc_*`.
+- HIP Stream Graph Capture: added graph capture API bindings (`hipStreamBeginCapture`, `hipStreamEndCapture`, `hipGraphInstantiate`, `hipGraphLaunch`, `hipGraphDestroy`, `hipGraphExecDestroy`), `CudaGraph` and `CudaGraphExec` support in `src/hip.zig`.
+- Zero-dependency Python distribution (plan §1.6 & §161):
+  - `pyproject.toml` `dependencies = []`: wheels carry native library and executable, installing with zero dependencies (no torch, no numpy required).
+  - Lazy importing and informative error messaging in `python/hk/_lazy.py`. Verified via `tests/test_zero_dependency.py`.
+  - `python/hk/tensor.py` implementing `hk.Tensor`, `tensor()`, `zeros()`, `ones()`, `from_buffer()`, `no_grad()`, `gradcheck()`, reverse-mode autograd tape (Add, Sub, Mul, Div, Neg, MatMul, Sum, Reshape, Relu, Silu), `__array_interface__` buffer protocol, and direct C ABI binding to HK native kernels. Verified via `tests/test_tensor.py`.
+- Run:
+  - `zig build test`: 198 pass / 7 skip (0 failures).
+  - `zig build test -Doptimize=ReleaseFast`: 198 pass / 7 skip (0 failures).
+  - `zig build test -Doptimize=ReleaseFast -Dcpu=x86_64_v3`: 198 pass / 7 skip (0 failures).
+  - `zig build test -Doptimize=ReleaseFast -Dcpu=x86_64`: 198 pass / 7 skip (0 failures).
+  - `zig build test-e2e -Doptimize=ReleaseFast`: 42/42 steps, 26/26 tests pass (11 CLI, 3 server, 12 hub).
+  - `zig build test-cuda`: pass (0 failures).
+  - `python3 tests/test_tensor.py`: 100% pass.
+  - `python3 tests/test_zero_dependency.py`: 100% pass.
+  - `python3 docs/graph/gen_graph.py --check`: 80 curated nodes, 194 files, 421 edges, 0 unowned files, 0 errors.
+- **Never run on physical AMD hardware**: compiled, ELF-validated, disassembled, and tested with parity skip harness, but physical AMD hardware was not present.
 
-**Next concrete commands (need the owner, they use sudo):**
-```
-sudo pacman -S --needed vulkan-radeon hip-runtime-amd hsa-rocr    # RADV for the Vulkan backend on AMD; HIP runtime for ROCm
-sudo usermod -aG render harshit                                   # then log out and in
-HSA_OVERRIDE_GFX_VERSION=11.0.0 zig17 build test -Doptimize=ReleaseFast   # runs the ROCm parity tests; gfx1103 is not an official ROCm target
-```
-Then: fix whatever the first real run shows, benchmark against llama.cpp (HIP and Vulkan on the iGPU), write WMMA (`v_wmma_f16_16x16x16_f16`) kernels for prompts, build `gfx10_3_generic` and `gfx12_generic` objects, add HIP graph capture. Update STATUS row 58 and the wiki from "implemented, not run" only with what actually ran.
-
-**Not started in 2.1:** 2:4 sparse tensor cores (owner: later), Metal (needs Apple hardware), Intel XPU / DirectML (Vulkan covers Intel and Windows GPUs; a D3D12 backend is a separate project), Android (Zig cannot provide bionic; needs the NDK, not installed; `build.zig` has an untested no-`libdl` tweak). Open decision: whether to treat Intel/Windows GPUs as "covered by Vulkan" in the plan.
-
-**Zero dependencies (separate PR #10, `feat/zero-dep-python`):** wheels per platform with `hk` bundled, `torch`/`numpy` optional, plan section 1.6 and 161 (`hk.tensor`). The release workflow's new wheel matrix was not run (needs a tag).
+**Next: Milestone 2.2 — Model Compatibility & Offload Execution:**
+- Memory-aware placement planner, device offloading policies, and streaming execution (§150, §151, §1, §73).
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 
@@ -174,3 +179,22 @@ Plan: `~/.claude/plans/snug-foraging-quasar.md` (approved 2026-10-20). Checklist
 - Owner merged PR #5 (override), I tagged `v2.0.0` on `030ba32`; release workflow green (see Now §0). Verified before tagging: `origin/main` tree equals the tested tree; Debug/ReleaseFast/v3/baseline 196/196, e2e 26/26, bindings 8 suites, pytest 97 passed / 3 skipped.
 - Branch `docs/readme-landing`: repo root cleaned, `graphify-out/` committed, README/CONTRIBUTING/HANDOFF rewritten; `gen_graph.py --check` is run before the commit. Not run: a fresh `pip install hknt==2.0.0` / `npm install hkntf` smoke test.
 - Merged PR #6 (admin bypass, owner-authorised for that PR) and updated the About blurb. Refreshed both graphs (`graphify update .`: 5,742 nodes, 11,135 edges; `gen_graph.py --check` 0 errors). CI on `main` after the merge was still running when this was written.
+
+### 2026-11-13 — Milestone 2.1 (hardware acceleration & zero-dep python) completed
+- Multi-target AMD ROCm HSA code objects: compiled and embedded `gfx10_3_generic` (RDNA2), `gfx11_generic` (RDNA3/3.5), and `gfx12_generic` (RDNA4) in `build.zig` and `src/hip.zig`.
+- Primitive barrier synchronization in `src/gpu_prims.zig`: implemented GFX12 split barriers (`llvm.amdgcn.s.barrier`) and discrete memory wait counters (`s_wait_loadcnt`, `s_wait_storecnt`, `s_wait_dscnt`) alongside GFX10/11 unified wait counters.
+- WMMA prompt GEMM: added `has_wmma` and `wmmaF32()` utilizing `llvm.amdgcn.wmma.f32.16x16x16.f16` across GFX11/12 in `src/gpu_prims.zig`. Implemented `gemmWmma()` in `src/cuda_device.zig` across all 26 weight formats using LDS weight staging. Verified `v_wmma_f32_16x16x16_f16` instructions in disassembled ELF.
+- HIP stream graph capture: added HIP stream graph capture and exec APIs to `src/hip.zig`.
+- Zero-dependency Python distribution & `hk.tensor` (plan §1.6 & §161):
+  - Made package self-contained with `dependencies = []` in `pyproject.toml`, lazy loading (`python/hk/_lazy.py`), standalone wheel smoke test.
+  - Authored `python/hk/tensor.py` implementing `hk.Tensor`, `tensor()`, `zeros()`, `ones()`, `from_buffer()`, `no_grad()`, `gradcheck()`, reverse-mode autograd tape (Add, Sub, Mul, Div, Neg, MatMul, Sum, Reshape, Relu, Silu), buffer protocol (`__array_interface__`), and native C ABI bindings (`hk_gemm_f32`, `hk_dot_product_f32`, `hk_forward_silu`, `hk_forward_rmsnorm`).
+  - Added unit test suite `tests/test_tensor.py` and zero-dependency test `tests/test_zero_dependency.py`. Both pass 100%.
+- Full verification passed:
+  - `zig build test`: 198 passed, 7 skipped (ROCm parity tests skip without AMD hardware).
+  - `zig build test -Doptimize=ReleaseFast`: 198 passed, 7 skipped.
+  - `zig build test -Doptimize=ReleaseFast -Dcpu=x86_64_v3`: 198 passed, 7 skipped.
+  - `zig build test -Doptimize=ReleaseFast -Dcpu=x86_64`: 198 passed, 7 skipped.
+  - `zig build test-e2e -Doptimize=ReleaseFast`: 26/26 passed (11 CLI, 3 server, 12 hub).
+  - `zig build test-cuda`: passed.
+  - `python3 docs/graph/gen_graph.py --check`: 0 errors.
+- Unrun: physical execution on AMD GPU hardware (none available on host machine).

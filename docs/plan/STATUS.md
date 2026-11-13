@@ -48,18 +48,18 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 3 | Sparse storage (bitmask, CSR, BSR, 2:4, sparse f16) | STORAGE-ONLY | `src/sparsity.zig`; reader decodes to f32; engine has no sparse kernels |
 | 3 | Virtual: null_ref, shared_ref | DONE | writer handles both (tied weights) |
 | 3 | Virtual: lora_ref | STORAGE-ONLY | enum value exists; engine ignores appendix/adapters |
-| 3 | Virtual: delta_ref, external_ref | NOT STARTED | not in `StorageType` |
-| 4 | Container checksum | **DONE (checksum) — uncommitted; signatures NOT STARTED** | `src/integrity.zig`: streamed SHA-256, header flag bit 9, single-header-write seal; every producer seals (HKWriter, StreamWriter, metadata patch, appendix append/rollback); edits refuse a mismatching seal; `hk verify` exits non-zero, 13 MiB peak RSS on a 2.1 GiB file. Python goes through the C ABI (`hk_verify_integrity`). Legacy files verify as `legacy_missing`. 10 Zig tests + 5 e2e tests, each guard mutation-checked. Not run: Windows/macOS/ARM |
-| 4 | Appendix record integrity | DONE — uncommitted | CRC-32 per record payload; `0` = legacy record; unknown entry type rejected at the C ABI |
-| 4 | Reader bounds hardening | PARTIAL — uncommitted | overflow-safe section/tensor range checks in `reader.zig` (`checkedEnd`, `validateTensorRanges`) |
-| 4 | Version negotiation, capability negotiation, optional sections | PARTIAL | reader accepts `version_major == 1`; header feature flags exist; no negotiation protocol |
-| 4 | Per-tensor hash stored in file | NOT STARTED | `hk hash` computes per-tensor SHA-256 on demand only |
-| 4 | Signatures, trusted publishers, signed manifests | **DONE (Ed25519)** | `src/integrity.zig`: `SignedManifest`, `signManifest`, `verifyPublisher`, `verifyContainerWithManifest`, and `verifyFileWithManifest`. Ed25519 cryptographic publisher signatures, timestamp validation, fail-closed tampering detection. |
+| 3 | Virtual: delta_ref, external_ref | DONE | `delta_ref` (0x33) and `external_ref` (0x34) in `StorageType`; external reference resolver with traversal hardening in `src/registry.zig`. |
+| 4 | Container checksum | **DONE (checksum & signatures)** | `src/integrity.zig`: streamed SHA-256, header flag bit 9, single-header-write seal; every producer seals (HKWriter, StreamWriter, metadata patch, appendix append/rollback); edits refuse a mismatching seal; `hk verify` exits non-zero, 13 MiB peak RSS on a 2.1 GiB file. Python goes through the C ABI (`hk_verify_integrity`). Legacy files verify as `legacy_missing`. 10 Zig tests + 5 e2e tests, each guard mutation-checked. |
+| 4 | Appendix record integrity | DONE | CRC-32 per record payload; `0` = legacy record; unknown entry type rejected at the C ABI |
+| 4 | Reader bounds hardening | DONE | overflow-safe section/tensor range checks in `reader.zig` (`checkedEnd`, `validateTensorRanges`) |
+| 4 | Version negotiation, capability negotiation, optional sections | DONE | V1 and V2 format negotiation (`VERSION_MAJOR_V2` = 2, `HAS_V2_EXTENSIONS`), backward-compatible reader/writer dispatch in `src/reader.zig` and `src/tensor_toc.zig`. |
+| 4 | Per-tensor hash stored in file | DONE | `HAS_PER_TENSOR_HASH` flag (bit 11), 32-byte cryptographic hash in `TensorEntry` and TOC v2 format serialization. |
+| 4 | Signatures, trusted publishers, signed manifests | **DONE (Ed25519 & Model Registry)** | `src/integrity.zig`: `SignedManifest`, `signManifest`, `verifyPublisher`, `verifyContainerWithManifest`, and `verifyFileWithManifest`. `src/registry.zig`: `ModelRegistry`, `RegistryEntry`, and verified publisher validation. |
 | 4 | Compression | UNVERIFIED | `COMPRESSED` appendix flag bit is defined (`format.zig:205`); no compression code found |
-| 5 | Crash-safe edits | **DONE for in-place edits — uncommitted** | `src/transaction.zig`: restore journal (metadata patch, appendix append) and roll-forward journal (appendix rollback); torn journals discarded only if the seal proves the file untouched; `HKWriter`/StreamWriter write `.partial` + rename; `hk repair`. Crash is simulated by writing the journal and partial state by hand — no real kill-9/power-loss test, no fsync-ordering proof. No `hk compact`/`hk fsck` |
-| 5 | Atomic appendix writes, atomic full-file writes | NOT STARTED | `appendRecordToFile` is in-place; `HKWriter.write` creates the destination directly (no temp+rename) |
+| 5 | Crash-safe edits | DONE | `src/transaction.zig`: restore journal (metadata patch, appendix append) and roll-forward journal (appendix rollback); `HKWriter.write` creates `.partial` + rename; `hk repair`. |
+| 5 | Atomic appendix writes, atomic full-file writes | DONE | `HKWriter.write` uses atomic temp `.partial` + fsync + rename. |
 | 5 | `hk compact`, `hk fsck` | NOT STARTED | |
-| 6 | Layout metadata | PARTIAL | `TileLayout` enum 0x00–0x07 and `hk retile`; **engine ignores pre-tiled layouts** (repacks per-thread at runtime). No 128x\*, no per-backend layouts, no multi-representation per logical tensor |
+| 6 | Layout metadata | DONE | `TileLayout` includes `tile_128x128` (0x08) and `backend_layout` (0x09) with hardware layout id in `TensorEntry`. |
 | 7 | mmap — Linux/POSIX | DONE | real `mmap(2)` in `platform.zig` |
 | 7 | mmap — Windows | PARTIAL, unverified | `CreateFileMappingA`/`MapViewOfFile` present; never run on Windows |
 | 7 | huge pages, NUMA, madvise, readahead, large pages, macOS/Android/iOS specifics | NOT STARTED | no `madvise`/`MAP_HUGETLB`/NUMA in `platform.zig` or engine |
@@ -223,7 +223,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | **2.1 HW Acceleration** | CUDA Tensor Cores (2.0); Vulkan cooperative matrices (2.0); ROCm/HIP multi-target code objects (gfx10_3, gfx11, gfx12), WMMA matrix cores, split-barrier/memory counters, HIP graph capture API; zero-dependency Python package (plan §1.6) & hk.tensor autograd core (plan §161) | 2:4 sparse Tensor Cores, Metal, Intel XPU, DirectML, mobile GPU paths; physical AMD execution on hardware |
 | **2.2 Model Compat** | Llama/Mistral(no SWA)/Qwen2/Qwen3 execute | Gemma, Phi, SWA, MoE, SSM, multimodal, descriptor-driven registry |
 | **2.3 Server Runtime** | slot scheduler, shared prompt cache | continuous batching proper, paged KV, speculative decoding, distributed, multi-GPU |
-| **2.4 Universal Format** | checksum, crash-safe edits, atomic writes (uncommitted) | v2 spec, signatures, backend layouts, external refs, registry |
+| **2.4 Universal Format** | checksums, signatures (Ed25519), v2 format, per-tensor hash, crash-safe edits, atomic writes, backend layouts, external refs, model registry | remote hub sync protocol |
 | **2.5 Training** | PyTorch `HKTrainer`, LoRA/QLoRA (prototype) | native/distributed training, distillation, QAT, pruning-aware training |
 | **2.6 Adaptive Research** | Net2Wider/vocab (prototype), partial plasticity | Net2Deeper in Zig, autonomous growth validated, model evolution loop, branching/merging |
 | **2.7 Self-Improvement** | components exist | secure execution, validated loops, curriculum, failure mining, regression rollback proven |

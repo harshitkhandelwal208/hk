@@ -5,12 +5,12 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 202,
-  "import_edges": 430,
+  "file_nodes": 203,
+  "import_edges": 433,
   "unowned_files": 0,
   "status_counts": {
-   "done": 12,
-   "partial": 19,
+   "done": 13,
+   "partial": 18,
    "in-progress": 2,
    "prototype": 7,
    "storage-only": 1,
@@ -878,17 +878,18 @@
   {
    "id": "signatures-registry",
    "type": "subsystem",
-   "label": "Signatures, trusted publishers, signed manifests",
-   "status": "partial",
+   "label": "Signatures, trusted publishers, model registry",
+   "status": "done",
    "plan": [
     4,
     37,
     94
    ],
    "paths": [
-    "src/integrity.zig"
+    "src/integrity.zig",
+    "src/registry.zig"
    ],
-   "note": "Ed25519 cryptographic publisher verification and signed manifests."
+   "note": "Ed25519 cryptographic publisher verification, signed manifests, and Universal Model Registry (plan \u00a794)."
   },
   {
    "id": "lineage-vcs",
@@ -1983,7 +1984,7 @@
    "type": "file",
    "label": "src/format.zig",
    "lang": "zig",
-   "loc": 248,
+   "loc": 257,
    "owner": "format-core"
   },
   {
@@ -2263,8 +2264,16 @@
    "type": "file",
    "label": "src/reader.zig",
    "lang": "zig",
-   "loc": 485,
+   "loc": 488,
    "owner": "format-core"
+  },
+  {
+   "id": "file:src/registry.zig",
+   "type": "file",
+   "label": "src/registry.zig",
+   "lang": "zig",
+   "loc": 243,
+   "owner": "signatures-registry"
   },
   {
    "id": "file:src/rocm/engine.zig",
@@ -2279,7 +2288,7 @@
    "type": "file",
    "label": "src/root.zig",
    "lang": "zig",
-   "loc": 84,
+   "loc": 86,
    "owner": "c-abi"
   },
   {
@@ -2343,7 +2352,7 @@
    "type": "file",
    "label": "src/tensor_toc.zig",
    "lang": "zig",
-   "loc": 120,
+   "loc": 143,
    "owner": "format-core"
   },
   {
@@ -4396,6 +4405,11 @@
    "type": "implemented_by"
   },
   {
+   "s": "signatures-registry",
+   "t": "file:src/registry.zig",
+   "type": "implemented_by"
+  },
+  {
    "s": "distributed",
    "t": "file:src/distributed.zig",
    "type": "implemented_by"
@@ -6161,6 +6175,16 @@
    "type": "imports"
   },
   {
+   "s": "file:src/registry.zig",
+   "t": "file:src/format.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/registry.zig",
+   "t": "file:src/integrity.zig",
+   "type": "imports"
+  },
+  {
    "s": "file:src/rocm/engine.zig",
    "t": "file:src/gpu/engine.zig",
    "type": "imports"
@@ -6328,6 +6352,11 @@
   {
    "s": "file:src/root.zig",
    "t": "file:src/reader.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/registry.zig",
    "type": "imports"
   },
   {
@@ -7226,6 +7255,16 @@
    "s": "server",
    "t": "tokenizer",
    "imports": 3
+  },
+  {
+   "s": "signatures-registry",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "signatures-registry",
+   "t": "integrity",
+   "imports": 1
   },
   {
    "s": "sparsity-storage",

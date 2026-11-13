@@ -24,7 +24,9 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - `src/engine/attention_kernel.zig` & `src/engine/config.zig`: sliding-window attention (SWA) masking across context windows $[npos - W, npos]$, tile skipping.
   - `src/vk/shaders/flash_attention.comp`: Vulkan compute shader with fused QK dot product, online softmax with running max/sum, and cross-subgroup shared memory value reduction, compiled to SPIR-V in `src/vk/spv/flash_attention.spv`.
   - `src/engine/speculative.zig`: `SpeculativeVerifier` (exact Leviathan et al. acceptance theorem, residual distribution resampling), `DynamicDraftScheduler` (EMA-based dynamic draft length adjustment), multi-device execution topologies (`same_device`, `cpu_draft_gpu_target`, `npu_draft_gpu_target`, `small_model_large_model`), bounded scratch buffers.
-- **Milestone 2.4 (Signed Manifests & Cryptographic Verification)**:
+- **Milestone 2.4 (Universal Model Format, V2 Extensions & Model Registry)**:
+  - `src/format.zig`, `src/tensor_toc.zig`, `src/reader.zig`, `src/writer.zig`: V2 format specification (`VERSION_MAJOR_V2` = 2, `HAS_V2_EXTENSIONS`), per-tensor cryptographic SHA-256 hash (`HAS_PER_TENSOR_HASH`), `delta_ref` (0x33) and `external_ref` (0x34) in `StorageType`, `tile_128x128` (0x08) and `backend_layout` (0x09) in `TileLayout`, `writeAtomic` via `.partial` + rename.
+  - `src/registry.zig`: `ModelRegistry`, `ModelIdentity`, `RegistryEntry`, `HardwareCompatibility`, external shard resolution with directory traversal prevention, and cryptographic container validation (`verifyEntry`).
   - `src/integrity.zig`: `SignedManifest`, `signManifest`, `verifyPublisher`, `verifyContainerWithManifest`, and `verifyFileWithManifest` using Ed25519, timestamp validation, and fail-closed tampering detection.
 - **Milestone 2.5 (2:4 Structured Sparsity & Block-Sparse GEMM)**:
   - `src/sparsity.zig`: 2:4 structured sparse GEMV & GEMM, Block Sparse Row (BSR) GEMV & GEMM, `encodeBSR_F32`, `decodeBSR_F32`. Memory-first zero-alloc streaming; numerical parity vs dense GEMM verified across block shapes (4x4, 8x8, 16x16) and sizes.
@@ -38,14 +40,14 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - Verified across all ISA targets and language bindings.
 
 **Verification results (all executed on this machine):**
-- `zig build test`: **226 pass, 7 skip (0 failures)**.
-- `zig build test -Doptimize=ReleaseFast`: **226 pass, 7 skip (0 failures)**.
+- `zig build test`: **228 pass, 7 skip (0 failures)**.
+- `zig build test -Doptimize=ReleaseFast`: **228 pass, 7 skip (0 failures)**.
 - `zig build test -Dcpu=x86_64_v3`: **pass (0 failures)**.
 - `zig build test -Dcpu=x86_64`: **pass (0 failures)**.
 - `zig build test-e2e`: **24/24 pass (0 failures)**.
 - `tests/bindings/run.sh`: **8/8 language suites pass (0 failures: C, C++, Rust, Go, C#, Java, TypeScript)**.
 - `python3 tests/test_zero_dependency.py`: **pass (0 failures)**.
-- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 202 files, 430 import edges, 0 unowned files, 0 errors**.
+- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 203 files, 433 import edges, 0 unowned files, 0 errors**.
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 

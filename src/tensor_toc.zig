@@ -37,6 +37,10 @@ pub const TensorTOC = struct {
     }
 
     pub fn serialize(self: *const TensorTOC, writer: *buf.BufferWriter) !void {
+        try self.serializeV2(writer, false);
+    }
+
+    pub fn serializeV2(self: *const TensorTOC, writer: *buf.BufferWriter, include_v2_fields: bool) !void {
         for (self.entries.items) |e| {
             const nlen: u16 = @intCast(e.name.len);
             try writer.writeU16(nlen);
@@ -61,10 +65,19 @@ pub const TensorTOC = struct {
 
             const sbits: u32 = @bitCast(e.sparsity_ratio);
             try writer.writeU32(sbits);
+
+            if (include_v2_fields) {
+                try writer.writeU16(e.backend_layout_id);
+                try writer.writeBytes(&e.tensor_hash);
+            }
         }
     }
 
     pub fn deserialize(buffer: []const u8, count: usize, allocator: std.mem.Allocator) !TensorTOC {
+        return deserializeV2(buffer, count, allocator, false);
+    }
+
+    pub fn deserializeV2(buffer: []const u8, count: usize, allocator: std.mem.Allocator, has_v2_fields: bool) !TensorTOC {
         var toc = TensorTOC.init(allocator);
         errdefer toc.deinit();
         var reader = buf.BufferReader.init(buffer);
@@ -98,6 +111,14 @@ pub const TensorTOC = struct {
             const sbits = try reader.readU32();
             const sparsity_ratio: f32 = @bitCast(sbits);
 
+            var backend_layout_id: u16 = 0;
+            var tensor_hash: [32]u8 = @splat(0);
+            if (has_v2_fields) {
+                backend_layout_id = try reader.readU16();
+                const h = try reader.readBytes(32);
+                @memcpy(&tensor_hash, h);
+            }
+
             try toc.entries.append(allocator, .{
                 .name = name,
                 .storage_type = @enumFromInt(stype_b),
@@ -113,6 +134,8 @@ pub const TensorTOC = struct {
                 .scale_size = scale_size,
                 .block_size = block_size,
                 .sparsity_ratio = sparsity_ratio,
+                .backend_layout_id = backend_layout_id,
+                .tensor_hash = tensor_hash,
             });
         }
         return toc;

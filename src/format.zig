@@ -3,6 +3,7 @@ const std = @import("std");
 /// HK File Format Magic Bytes: "HKNT" (0x48, 0x4B, 0x4E, 0x54)
 pub const MAGIC: [4]u8 = .{ 0x48, 0x4B, 0x4E, 0x54 };
 pub const VERSION_MAJOR: u16 = 1;
+pub const VERSION_MAJOR_V2: u16 = 2;
 pub const VERSION_MINOR: u16 = 0;
 pub const DEFAULT_ALIGNMENT_BYTES: usize = 128; // Default NVIDIA Tensor Core coalescing alignment
 pub const ALIGNMENT_BYTES: usize = 128;
@@ -21,6 +22,8 @@ pub const HeaderFlags = struct {
     pub const RAW_WEIGHT_STORAGE: u32 = 1 << 7; // Raw unquantized IEEE weights for zero compute headroom
     pub const UNIVERSAL_PAGE_ALIGNED: u32 = 1 << 8; // Super-coalesced hardware page aligned (4KB / 16KB / 64KB)
     pub const HAS_SHA256_CHECKSUM: u32 = 1 << 9; // checksum and reserved1[0..32] hold the container SHA-256
+    pub const HAS_V2_EXTENSIONS: u32 = 1 << 10; // V2 format: per-tensor verification, external refs, backend layouts
+    pub const HAS_PER_TENSOR_HASH: u32 = 1 << 11; // TOC contains 32-byte BLAKE3/SHA-256 hash per tensor
 };
 
 pub const StorageType = enum(u8) {
@@ -66,6 +69,8 @@ pub const StorageType = enum(u8) {
     null_ref = 0x30, // Fully pruned/zero tensor (0 payload bytes)
     shared_ref = 0x31, // Shared pointer to another tensor (tied weights)
     lora_ref = 0x32, // Base tensor + low rank adaptation factors
+    delta_ref = 0x33, // Base tensor + sparse or low-rank delta (plan §3, §39, §150)
+    external_ref = 0x34, // External file reference / shard URI (plan §3, §150)
 
     // K-Quants (super-block 256 weights with 16 sub-blocks, scales & min offsets)
     q2_k = 0x40, // 2-bit super-block quantization (2.5625 bpw)
@@ -119,6 +124,8 @@ pub const TileLayout = enum(u8) {
     block_sparse_2_4 = 0x05,
     tile_32x32 = 0x06,
     tile_64x64 = 0x07,
+    tile_128x128 = 0x08, // 128x128 super-tile (modern GPU/accelerator coalescing)
+    backend_layout = 0x09, // Hardware-specific backend layout (Vulkan / ROCm / CUDA optimized pitch)
 };
 
 pub const SparsityType = enum(u8) {
@@ -152,7 +159,7 @@ pub const FileHeader = extern struct {
     reserved1: [38]u8 = @as([38]u8, @splat(0)),
 
     pub fn isValid(self: *const FileHeader) bool {
-        return std.mem.eql(u8, &self.magic, &MAGIC) and self.version_major == VERSION_MAJOR;
+        return std.mem.eql(u8, &self.magic, &MAGIC) and (self.version_major == VERSION_MAJOR or self.version_major == VERSION_MAJOR_V2);
     }
 };
 
@@ -180,6 +187,8 @@ pub const TensorEntry = struct {
     scale_size: u64 = 0, // Byte size of scales
     block_size: u16 = 32, // Quantization block size (default 32)
     sparsity_ratio: f32 = 0.0, // Pruning sparsity ratio [0.0, 1.0)
+    backend_layout_id: u16 = 0, // Hardware backend layout identifier (plan §6, §150)
+    tensor_hash: [32]u8 = @splat(0), // 32-byte cryptographic SHA-256 hash (plan §4, §150)
 };
 
 pub const MetadataValueType = enum(u8) {

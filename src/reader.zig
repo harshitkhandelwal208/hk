@@ -45,7 +45,10 @@ pub const HKReader = struct {
         const toc_start: usize = @intCast(header.tensor_toc_offset);
         const toc_end = try checkedEnd(header.tensor_toc_offset, header.tensor_toc_size, region.bytes.len, error.TOCOutOfBounds);
         const toc_buf = region.bytes[toc_start..toc_end];
-        var toc = try tensor_toc.TensorTOC.deserialize(toc_buf, header.tensor_count, allocator);
+        const has_v2 = (header.flags & format.HeaderFlags.HAS_V2_EXTENSIONS != 0) or
+            (header.flags & format.HeaderFlags.HAS_PER_TENSOR_HASH != 0) or
+            header.version_major >= 2;
+        var toc = try tensor_toc.TensorTOC.deserializeV2(toc_buf, header.tensor_count, allocator, has_v2);
         errdefer toc.deinit();
         try validateTensorRanges(&toc, region.bytes.len);
 

@@ -3,9 +3,9 @@
 ## Session Info
 - **Project**: HK Neural Tensor Framework
 - **Active Branch**: `feat/hk-2.1-rocm`
-- **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1, 2.2, & 2.3
-- **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1, 2.2, 2.3 Server Runtime)
-- **Last Verified Test**: 226 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 24/24 e2e; 8/8 bindings suites)
+- **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1, 2.2, 2.3 & 2.4
+- **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1 - 2.4 Universal Model Format)
+- **Last Verified Test**: 228 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 24/24 e2e; 8/8 bindings suites)
 
 ## Milestone 2.1: Hardware Acceleration & Zero-Dependency Python (100% COMPLETE)
 - [x] Abstracted inline-PTX in `src/cuda_device.zig` behind per-architecture primitives (`src/gpu_prims.zig`).
@@ -50,9 +50,26 @@
   - Supported execution topologies: `same_device`, `cpu_draft_gpu_target`, `npu_draft_gpu_target`, `small_model_large_model`.
   - Zero-heap allocation in verification loops with bounded preallocated buffers.
 - [x] Continuous Verification:
-  - Passed `zig build test` (226/233 pass, 7 skipped ROCm device tests).
+  - Passed `zig build test` (228/235 pass, 7 skipped ROCm device tests).
   - Passed `zig build test -Doptimize=ReleaseFast`.
   - Passed `zig build test-e2e`.
+  - Passed `tests/bindings/run.sh` (8/8 language bindings pass).
   - Passed `python3 tests/test_zero_dependency.py`.
   - Passed `python3 docs/graph/gen_graph.py --check` (0 errors).
+
+## Milestone 2.4: Universal Model Format & Model Registry (100% COMPLETE)
+- [x] Robust V2 Format Specification (`src/format.zig`, `src/tensor_toc.zig`, `src/reader.zig`, `src/writer.zig`):
+  - Added `VERSION_MAJOR_V2` (2) and `HAS_V2_EXTENSIONS` flag for backward-compatible version negotiation.
+  - Added `HAS_PER_TENSOR_HASH` flag and 32-byte cryptographic SHA-256 hash per tensor in `TensorEntry` and TOC v2 format.
+  - Added virtual reference storage types `delta_ref` (0x33) and `external_ref` (0x34).
+  - Added layout metadata `tile_128x128` (0x08) and `backend_layout` (0x09) with hardware backend layout identifier.
+  - Validated fail-closed bounds checking and backward compatibility: V1 files deserialize seamlessly.
+- [x] Crash-Safe Mutation & Atomic Writes:
+  - Implemented `HKWriter.writeAtomic` using temporary `.partial` file, checksum sealing, and atomic POSIX `rename`.
+- [x] Universal Model Registry & External Shard Resolver (`src/registry.zig`, plan §94, §150):
+  - Implemented `ModelIdentity` (namespace, name, version, commit) and URI formatting.
+  - Implemented `ModelRegistry` with unique registration, architecture and storage indexing, and query methods.
+  - Implemented `resolveExternalReference` with directory traversal protection against hostile relative paths.
+  - Implemented `verifyEntry` validating container SHA-256 and Ed25519 publisher signatures.
+
 

@@ -45,6 +45,7 @@ pub const cuda = @import("cuda.zig");
 pub const hip = @import("hip.zig");
 pub const distributed = @import("distributed.zig");
 pub const models = @import("models/registry.zig");
+pub const registry = @import("registry.zig");
 
 // Re-export key structs
 pub const FileHeader = format.FileHeader;
@@ -53,6 +54,7 @@ pub const TileLayout = format.TileLayout;
 pub const SparsityType = format.SparsityType;
 pub const TensorEntry = format.TensorEntry;
 pub const MetadataMap = metadata.MetadataMap;
+pub const ModelRegistry = registry.ModelRegistry;
 pub const TensorTOC = tensor_toc.TensorTOC;
 pub const HKWriter = writer.HKWriter;
 pub const HKReader = reader.HKReader;

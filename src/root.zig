@@ -53,6 +53,7 @@ pub const lineage = @import("lineage.zig");
 pub const evolution = @import("evolution.zig");
 pub const self_play = @import("self_play.zig");
 pub const curriculum = @import("curriculum.zig");
+pub const arch_search = @import("arch_search.zig");
 
 // Re-export key structs
 pub const FileHeader = format.FileHeader;

@@ -48,18 +48,19 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - `src/engine/planner.zig`: Updated `planExecution` to account for routed MoE expert counts in MLP weight estimation; verified with unit tests.
   - `src/models/registry.zig`: Added canonical architecture descriptors for `mixtral` (MoE), `deepseek_moe`, `clip` (Vision), and `whisper` (Audio), parameterized with RoPE styles, normalization types, and vocabulary metadata.
   - `src/distributed.zig`: `DeviceRank`, `CollectiveContext` with in-place SIMD `allreduceSum`, `allgather`, `broadcast`, and `columnParallelForward` / `rowParallelForward` linear layer sharding with exact GEMM parity.
+  - `src/arch_search.zig`: Constrained neural architecture search (§113), Pareto frontier optimization across parameter capacity, decode throughput, and memory footprint, and hardware-aware queries (§114: best architecture under VRAM budget, optimal quantization format, and memory bandwidth saturation).
   - `tests/test_engine.zig`: Added multi-architecture execution tests verifying Gemma (`gelu_tanh` and `qk_norm`) and Qwen2 (`qkv_bias`) forward passes with full numerical stability and determinism.
   - Universal hardware-neutral invariant: HK is not specialized for any single architecture (e.g. LLaMA only) or vendor silicon (e.g. NVIDIA only); it executes universally across CPU, Vulkan, CUDA, and ROCm/HIP.
 
 **Verification results (all executed on this machine):**
-- `zig build test`: **252 pass, 7 skip (0 failures)**.
-- `zig build test -Doptimize=ReleaseFast`: **252 pass, 7 skip (0 failures)**.
+- `zig build test`: **257 pass, 7 skip (0 failures)**.
+- `zig build test -Doptimize=ReleaseFast`: **257 pass, 7 skip (0 failures)**.
 - `zig build test -Dcpu=x86_64_v3`: **pass (0 failures)**.
 - `zig build test -Dcpu=x86_64`: **pass (0 failures)**.
 - `zig build test-e2e`: **26/26 pass (0 failures)**.
 - `tests/bindings/run.sh`: **8/8 language suites pass (0 failures: C, C++, Rust, Go, C#, Java, TypeScript)**.
 - `python3 tests/test_zero_dependency.py`: **pass (0 failures)**.
-- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 210 files, 447 import edges, 0 unowned files, 0 errors**.
+- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 211 files, 451 import edges, 0 unowned files, 0 errors**.
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 

@@ -64,7 +64,7 @@
     {"id": "distributed", "type": "subsystem", "label": "Multi-GPU / distributed inference + training", "status": "partial", "plan": [74, 75, 115], "paths": ["src/distributed.zig"], "note": "Tensor and pipeline parallelism with collective operations (allreduce, allgather, broadcast)."},
     {"id": "profiling-autotune", "type": "planned", "label": "hk profile + autotuning + persistent kernel cache", "status": "not-started", "plan": [83, 84, 142], "paths": [], "note": ""},
     {"id": "fuzzing", "type": "planned", "label": "Fuzzing + malicious-file corpus", "status": "not-started", "plan": [100, 101], "paths": [], "note": "Only Zig's scaffold fuzz example exists."},
-    {"id": "model-evolution", "type": "subsystem", "label": "Model-evolution loop + architecture search", "status": "done", "plan": [112, 113, 114, 155], "paths": ["src/evolution.zig"], "note": "Autonomous architecture evolution, candidate mutation, hardware governor budgeting, and regression rollback."},
+    {"id": "model-evolution", "type": "subsystem", "label": "Model-evolution loop + architecture search", "status": "done", "plan": [112, 113, 114, 155], "paths": ["src/evolution.zig", "src/arch_search.zig"], "note": "Autonomous architecture evolution, candidate mutation, hardware governor budgeting, and regression rollback."},
     {"id": "extension-system", "type": "planned", "label": "Plugin / extension system + stable ABI v1", "status": "not-started", "plan": [146, 147], "paths": [], "note": ""},
     {"id": "ms-2.0", "type": "milestone", "label": "HK 2.0 Unified Runtime", "status": "partial", "plan": [150], "paths": [], "note": ""},
     {"id": "ms-2.1", "type": "milestone", "label": "HK 2.1 Hardware Acceleration", "status": "not-started", "plan": [150], "paths": [], "note": ""},

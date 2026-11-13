@@ -117,6 +117,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 35 | Self-play / SPIN | **DONE (Zig native)** | `src/self_play.zig`: mathematical SPIN preference loss with analytical policy gradients, reference snapshot comparison with exact KL divergence regularization, `AntiCollapseMonitor` (Shannon entropy bounds), and `SelfPlayEngine` with regression rollback. |
 | 36 | Autonomous expansion loop | **DONE (Zig native)** | `src/evolution.zig`: `EvolutionEngine` and `EvolutionCandidate` tying together `growth.zig`, `adaptive.GrowthGovernor`, `adaptive.RegressionGovernor`, and `lineage.LineageGraph` with automated accept/reject on evaluation. |
 | 40 | LoRA/QLoRA training | PROTOTYPE | `HKTrainer`, `LoRAAdapter`, "true QLoRA" (v1.0.2). **No inference-time adapter application in the engine** |
+| 113–114 | Architecture Search & Hardware-Aware Design | **DONE (Zig native)** | `src/arch_search.zig`: constrained search over dimensions, layers, heads, experts, and quantizations (§113); Pareto frontier extraction; hardware queries answering optimal architecture under VRAM budget, optimal quantization format, and memory bandwidth saturation (§114). |
 | 105–118 | Per-technique evaluation, ablations, experiment tracking, reproducibility manifests | NOT STARTED | wiki pages state no results are claimed |
 
 ### Lineage (§37–§39)

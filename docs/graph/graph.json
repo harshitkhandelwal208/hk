@@ -5,8 +5,8 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 210,
-  "import_edges": 447,
+  "file_nodes": 211,
+  "import_edges": 451,
   "unowned_files": 0,
   "status_counts": {
    "done": 18,
@@ -967,7 +967,8 @@
     155
    ],
    "paths": [
-    "src/evolution.zig"
+    "src/evolution.zig",
+    "src/arch_search.zig"
    ],
    "note": "Autonomous architecture evolution, candidate mutation, hardware governor budgeting, and regression rollback."
   },
@@ -1656,6 +1657,14 @@
    "owner": "appendix-lineage"
   },
   {
+   "id": "file:src/arch_search.zig",
+   "type": "file",
+   "label": "src/arch_search.zig",
+   "lang": "zig",
+   "loc": 405,
+   "owner": "model-evolution"
+  },
+  {
    "id": "file:src/arrays.zig",
    "type": "file",
    "label": "src/arrays.zig",
@@ -2340,7 +2349,7 @@
    "type": "file",
    "label": "src/root.zig",
    "lang": "zig",
-   "loc": 93,
+   "loc": 94,
    "owner": "c-abi"
   },
   {
@@ -4514,6 +4523,11 @@
   },
   {
    "s": "model-evolution",
+   "t": "file:src/arch_search.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "model-evolution",
    "t": "file:src/evolution.zig",
    "type": "implemented_by"
   },
@@ -5065,6 +5079,21 @@
   {
    "s": "file:src/appendix.zig",
    "t": "file:src/transaction.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/arch_search.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/arch_search.zig",
+   "t": "file:src/engine/planner.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/arch_search.zig",
+   "t": "file:src/format.zig",
    "type": "imports"
   },
   {
@@ -6329,6 +6358,11 @@
   },
   {
    "s": "file:src/root.zig",
+   "t": "file:src/arch_search.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
    "t": "file:src/arrays.zig",
    "type": "imports"
   },
@@ -7336,12 +7370,27 @@
   },
   {
    "s": "model-evolution",
+   "t": "engine",
+   "imports": 1
+  },
+  {
+   "s": "model-evolution",
+   "t": "format-core",
+   "imports": 1
+  },
+  {
+   "s": "model-evolution",
    "t": "growth",
    "imports": 2
   },
   {
    "s": "model-evolution",
    "t": "lineage-vcs",
+   "imports": 1
+  },
+  {
+   "s": "model-evolution",
+   "t": "memory-planner",
    "imports": 1
   },
   {

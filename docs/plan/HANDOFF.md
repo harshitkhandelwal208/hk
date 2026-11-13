@@ -10,31 +10,21 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
 
 ## Now
 
-### 00. HK 2.1 (hardware acceleration) completed — branch `feat/hk-2.1-rocm`
+### 00. HK 2.2 — Model Compatibility & Offload Execution in progress
 
-**Done this milestone, with what was run:**
-- Multi-target AMD ROCm/HIP compilation (`build.zig`): `gfx10_3_generic` (RDNA2), `gfx11_generic` (RDNA3/3.5, wave32), `gfx12_generic` (RDNA4) HSA code objects embedded (`rocm_device_co_gfx10_3`, `rocm_device_co_gfx11`, `rocm_device_co_gfx12`). Dynamic target selection and code object fallback in `src/hip.zig`.
-- Target-specific GPU barrier and memory wait synchronization (`src/gpu_prims.zig`): GFX12 split barriers (`llvm.amdgcn.s.barrier` -> `s_barrier_signal -1` + `s_barrier_wait -1`) and discrete memory wait counters (`s_wait_loadcnt 0x0`, `s_wait_storecnt 0x0`, `s_wait_dscnt 0x0`); GFX10/11 unified wait counters (`s_waitcnt vmcnt(0) lgkmcnt(0)`, `s_waitcnt_vscnt null, 0x0`).
-- Wave Matrix Multiply-Accumulate (WMMA): `has_wmma` and `wmmaF32()` utilizing `llvm.amdgcn.wmma.f32.16x16x16.f16` across GFX11 and GFX12. Implemented `gemmWmma()` in `src/cuda_device.zig` for prompt processing across all 26 dense & quantized weight formats. Verified via `llvm-objdump -d --mcpu=gfx1100` that `v_wmma_f32_16x16x16_f16` instructions are emitted in `gemm_tc_*`.
-- HIP Stream Graph Capture: added graph capture API bindings (`hipStreamBeginCapture`, `hipStreamEndCapture`, `hipGraphInstantiate`, `hipGraphLaunch`, `hipGraphDestroy`, `hipGraphExecDestroy`), `CudaGraph` and `CudaGraphExec` support in `src/hip.zig`.
-- Zero-dependency Python distribution (plan §1.6 & §161):
-  - `pyproject.toml` `dependencies = []`: wheels carry native library and executable, installing with zero dependencies (no torch, no numpy required).
-  - Lazy importing and informative error messaging in `python/hk/_lazy.py`. Verified via `tests/test_zero_dependency.py`.
-  - `python/hk/tensor.py` implementing `hk.Tensor`, `tensor()`, `zeros()`, `ones()`, `from_buffer()`, `no_grad()`, `gradcheck()`, reverse-mode autograd tape (Add, Sub, Mul, Div, Neg, MatMul, Sum, Reshape, Relu, Silu), `__array_interface__` buffer protocol, and direct C ABI binding to HK native kernels. Verified via `tests/test_tensor.py`.
+**Done this session, with what was run:**
+- Memory-aware placement planner (`src/backend/select.zig`, plan §1.2, §73, §134):
+  - Added `PlacementPolicy` enum (`cpu_only`, `whole_device`, `prefix_layers`).
+  - Added `MemoryBreakdown` tracking: VRAM vs host RAM weights, KV cache, runtime activations, and driver headroom.
+  - Added planner query APIs answering §1.2 questions: `canFit()`, `layerTarget(layer_idx, total_layers)`, and `describeBreakdown()`.
+  - Added streaming prefill chunking (`chunk_size`) and `recomputation_advised` flag for tight VRAM conditions (>95% budget).
 - Run:
-  - `zig build test`: 198 pass / 7 skip (0 failures).
-  - `zig build test -Doptimize=ReleaseFast`: 198 pass / 7 skip (0 failures).
-  - `zig build test -Doptimize=ReleaseFast -Dcpu=x86_64_v3`: 198 pass / 7 skip (0 failures).
-  - `zig build test -Doptimize=ReleaseFast -Dcpu=x86_64`: 198 pass / 7 skip (0 failures).
-  - `zig build test-e2e -Doptimize=ReleaseFast`: 42/42 steps, 26/26 tests pass (11 CLI, 3 server, 12 hub).
-  - `zig build test-cuda`: pass (0 failures).
-  - `python3 tests/test_tensor.py`: 100% pass.
-  - `python3 tests/test_zero_dependency.py`: 100% pass.
+  - `zig build test`: 199 pass / 7 skip (0 failures).
+  - `zig build test -Doptimize=ReleaseFast`: 199 pass / 7 skip (0 failures).
   - `python3 docs/graph/gen_graph.py --check`: 80 curated nodes, 194 files, 421 edges, 0 unowned files, 0 errors.
-- **Never run on physical AMD hardware**: compiled, ELF-validated, disassembled, and tested with parity skip harness, but physical AMD hardware was not present.
 
-**Next: Milestone 2.2 — Model Compatibility & Offload Execution:**
-- Memory-aware placement planner, device offloading policies, and streaming execution (§150, §151, §1, §73).
+**Next in 2.2:**
+- Architecture expansion: Gemma, Phi, MoE registry and execution contracts (plan §46-§55, §150).
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 
@@ -198,3 +188,12 @@ Plan: `~/.claude/plans/snug-foraging-quasar.md` (approved 2026-10-20). Checklist
   - `zig build test-cuda`: passed.
   - `python3 docs/graph/gen_graph.py --check`: 0 errors.
 - Unrun: physical execution on AMD GPU hardware (none available on host machine).
+
+### 2026-11-13 — Milestone 2.2 memory-aware placement planner & device offloading started
+- Implemented memory-aware placement planner in `src/backend/select.zig` (§1.2, §73, §134):
+  - Defined `PlacementPolicy` (`cpu_only`, `whole_device`, `prefix_layers`).
+  - Implemented `MemoryBreakdown` computing VRAM and host RAM allocation for weights, KV cache, runtime activations, and driver headroom.
+  - Added query methods answering §1.2 placement questions: `canFit()`, `layerTarget()`, and `describeBreakdown()`.
+  - Added bounded streaming execution support with `chunk_size` and memory pressure warning flag `recomputation_advised`.
+- Unit test coverage added and passed: 199 passed / 7 skipped on `zig build test` and `zig build test -Doptimize=ReleaseFast`.
+- `python3 docs/graph/gen_graph.py --check` passes with 0 errors.

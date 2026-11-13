@@ -113,6 +113,29 @@ pub const Rejection = struct { target: Target, why: Why };
 
 pub const max_rejections = 4;
 
+/// Placement strategy determined by the memory planner (§1.2, §73, §134).
+pub const PlacementPolicy = enum {
+    /// Pure host CPU execution (all layers + KV cache in host memory).
+    cpu_only,
+    /// Whole model resident on device (weights, KV cache, and activations in VRAM).
+    whole_device,
+    /// Heterogeneous partial offload: leading layers on device, remainder on host.
+    prefix_layers,
+};
+
+/// Detailed memory breakdown across device VRAM and host RAM (§1.2).
+pub const MemoryBreakdown = struct {
+    device_weights_bytes: u64 = 0,
+    device_kv_bytes: u64 = 0,
+    device_activations_bytes: u64 = 0,
+    device_total_bytes: u64 = 0,
+    device_headroom_bytes: u64 = 0,
+    host_weights_bytes: u64 = 0,
+    host_kv_bytes: u64 = 0,
+    host_activations_bytes: u64 = 0,
+    host_total_bytes: u64 = 0,
+};
+
 pub const Plan = struct {
     /// The chosen target; `.cpu` when no device qualified.
     target: Target = .cpu,
@@ -120,7 +143,15 @@ pub const Plan = struct {
     n_ctx: usize,
     /// Leading layers the target runs; 0 means the whole network.
     layers: usize = 0,
+    /// Active placement policy.
+    policy: PlacementPolicy = .cpu_only,
     device_name: []const u8 = "",
+    /// Granular memory breakdown for VRAM and host RAM.
+    breakdown: MemoryBreakdown = .{},
+    /// Bounded chunk size for streaming prompt execution.
+    chunk_size: usize = 512,
+    /// Whether activation recomputation / checkpointing is advised due to high memory pressure.
+    recomputation_advised: bool = false,
     rejections: [max_rejections]Rejection = undefined,
     n_rejections: usize = 0,
 
@@ -133,6 +164,19 @@ pub const Plan = struct {
         self.rejections[self.n_rejections] = .{ .target = target, .why = why };
         self.n_rejections += 1;
     }
+
+    /// Whether this model fits within memory constraints (plan §1.2).
+    pub fn canFit(self: *const Plan) bool {
+        return self.target != .cpu or self.n_rejections == 0;
+    }
+
+    /// Location of a specific layer in heterogeneous execution (plan §1.2, §73).
+    pub fn layerTarget(self: *const Plan, layer_idx: usize, total_layers: usize) Target {
+        _ = total_layers;
+        if (self.target == .cpu) return .cpu;
+        if (self.layers == 0) return self.target;
+        return if (layer_idx < self.layers) self.target else .cpu;
+    }
 };
 
 pub const Inputs = struct {
@@ -141,6 +185,8 @@ pub const Inputs = struct {
     n_ctx: usize,
     /// Smallest context worth running a device with; below it the device is rejected.
     min_ctx: usize = 512,
+    /// Maximum chunk size for streaming prefill execution (default 512).
+    chunk_size: usize = 512,
     /// Exactly this many leading layers on the device (`--gpu-layers`); null lets the planner decide. A count of all
     /// layers or more means the whole network.
     force_layers: ?usize = null,
@@ -155,7 +201,7 @@ const whole_floor: usize = 2048;
 const headroom_tenths: u64 = 9;
 
 pub fn plan(in: Inputs) Plan {
-    var p = Plan{ .n_ctx = in.n_ctx };
+    var p = Plan{ .n_ctx = in.n_ctx, .chunk_size = @min(in.n_ctx, in.chunk_size) };
     var asked_target_present = false;
     for (in.candidates) |c| {
         if (c.target == .cpu or !in.choice.wants(c.target)) continue;
@@ -176,10 +222,31 @@ pub fn plan(in: Inputs) Plan {
                 p.reject(c.target, .{ .layers_do_not_fit = .{ .layers = want, .needed = part.at(want, in.n_ctx), .free = c.free_bytes } });
                 continue;
             }
+            p.policy = .prefix_layers;
             p.target = c.target;
             p.n_ctx = in.n_ctx;
             p.layers = want;
             p.device_name = c.device_name;
+            p.chunk_size = @min(in.n_ctx, in.chunk_size);
+            var dev_w: u64 = 0;
+            for (part.layer_bytes[0..want]) |b| dev_w +|= b;
+            var host_w: u64 = 0;
+            for (part.layer_bytes[want..part.layers]) |b| host_w +|= b;
+            const dev_kv = part.per_layer_ctx *| in.n_ctx *| want;
+            const host_kv = part.per_layer_ctx *| in.n_ctx *| (part.layers - want);
+            const dev_tot = part.at(want, in.n_ctx);
+            p.breakdown = .{
+                .device_weights_bytes = dev_w,
+                .device_kv_bytes = dev_kv,
+                .device_activations_bytes = part.fixed,
+                .device_total_bytes = dev_tot,
+                .device_headroom_bytes = c.free_bytes -| dev_tot,
+                .host_weights_bytes = host_w,
+                .host_kv_bytes = host_kv,
+                .host_activations_bytes = part.fixed,
+                .host_total_bytes = host_w +| host_kv +| part.fixed,
+            };
+            p.recomputation_advised = (dev_tot > budget * 95 / 100);
             return p;
         };
         // A target that can offload part of the model keeps a usable context rather than shrinking it to the minimum:
@@ -195,10 +262,31 @@ pub fn plan(in: Inputs) Plan {
                     var k = part.layers - 1;
                     while (k > 0 and part.at(k, pctx) > budget) k -= 1;
                     if (k > 0) {
+                        p.policy = .prefix_layers;
                         p.target = c.target;
                         p.n_ctx = pctx;
                         p.layers = k;
                         p.device_name = c.device_name;
+                        p.chunk_size = @min(pctx, in.chunk_size);
+                        var dev_w: u64 = 0;
+                        for (part.layer_bytes[0..k]) |b| dev_w +|= b;
+                        var host_w: u64 = 0;
+                        for (part.layer_bytes[k..part.layers]) |b| host_w +|= b;
+                        const dev_kv = part.per_layer_ctx *| pctx *| k;
+                        const host_kv = part.per_layer_ctx *| pctx *| (part.layers - k);
+                        const dev_tot = part.at(k, pctx);
+                        p.breakdown = .{
+                            .device_weights_bytes = dev_w,
+                            .device_kv_bytes = dev_kv,
+                            .device_activations_bytes = part.fixed,
+                            .device_total_bytes = dev_tot,
+                            .device_headroom_bytes = c.free_bytes -| dev_tot,
+                            .host_weights_bytes = host_w,
+                            .host_kv_bytes = host_kv,
+                            .host_activations_bytes = part.fixed,
+                            .host_total_bytes = host_w +| host_kv +| part.fixed,
+                        };
+                        p.recomputation_advised = (dev_tot > budget * 95 / 100);
                         return p;
                     }
                     if (pctx <= in.min_ctx) break;
@@ -208,9 +296,28 @@ pub fn plan(in: Inputs) Plan {
             p.reject(c.target, .{ .does_not_fit = .{ .needed = c.need.at(ctx), .free = c.free_bytes } });
             continue;
         }
+        p.policy = .whole_device;
         p.target = c.target;
         p.n_ctx = ctx;
         p.device_name = c.device_name;
+        p.chunk_size = @min(ctx, in.chunk_size);
+        const dev_tot = c.need.at(ctx);
+        p.breakdown = .{
+            .device_weights_bytes = if (c.need.partial) |part| blk: {
+                var sum: u64 = 0;
+                for (part.layer_bytes[0..part.layers]) |b| sum +|= b;
+                break :blk sum;
+            } else c.need.base,
+            .device_kv_bytes = c.need.per_ctx *| ctx,
+            .device_activations_bytes = if (c.need.partial) |part| part.fixed else 0,
+            .device_total_bytes = dev_tot,
+            .device_headroom_bytes = c.free_bytes -| dev_tot,
+            .host_weights_bytes = 0,
+            .host_kv_bytes = 0,
+            .host_activations_bytes = 0,
+            .host_total_bytes = 0,
+        };
+        p.recomputation_advised = (dev_tot > budget * 95 / 100);
         return p;
     }
     // An explicit request for a device this build has no backend for must say so rather than fall to the CPU quietly.
@@ -240,6 +347,30 @@ pub fn describe(p: *const Plan, w: *std.Io.Writer) std.Io.Writer.Error!void {
         try w.print("{s}: ", .{caps.apiName(r.target)});
         try writeReason(r, w);
         try w.writeByte('\n');
+    }
+}
+
+/// Formats the memory breakdown across device and host into human-readable text (§1.2).
+pub fn describeBreakdown(p: *const Plan, w: *std.Io.Writer) std.Io.Writer.Error!void {
+    try w.print("Policy: {s}\n", .{@tagName(p.policy)});
+    try w.print("Target: {s}\n", .{caps.apiName(p.target)});
+    try w.print("Context: {d} positions (chunk: {d})\n", .{ p.n_ctx, p.chunk_size });
+    if (p.target != .cpu) {
+        try w.print("Device VRAM: {d} MiB (weights {d} MiB, kv {d} MiB, act {d} MiB, headroom {d} MiB)\n", .{
+            p.breakdown.device_total_bytes >> 20,
+            p.breakdown.device_weights_bytes >> 20,
+            p.breakdown.device_kv_bytes >> 20,
+            p.breakdown.device_activations_bytes >> 20,
+            p.breakdown.device_headroom_bytes >> 20,
+        });
+    }
+    if (p.policy == .prefix_layers) {
+        try w.print("Host RAM: {d} MiB (weights {d} MiB, kv {d} MiB, act {d} MiB)\n", .{
+            p.breakdown.host_total_bytes >> 20,
+            p.breakdown.host_weights_bytes >> 20,
+            p.breakdown.host_kv_bytes >> 20,
+            p.breakdown.host_activations_bytes >> 20,
+        });
     }
 }
 
@@ -411,4 +542,42 @@ test "no layer fits: the device is rejected with the whole-model numbers" {
     const p = plan(.{ .n_ctx = 4096, .candidates = &cs });
     try std.testing.expectEqual(Target.cpu, p.target);
     try std.testing.expect(p.rejected()[0].why == .does_not_fit);
+}
+
+test "memory planner breakdown and layer targets for whole and partial offload" {
+    // Whole model fits: 32 layers of 200 MiB + 100 MiB fixed + 16 KiB/layer/position.
+    // At 4096 ctx: 32 * 200 = 6400 MiB weights, 32 * 16 * 4 = 2048 MiB KV, 100 MiB act -> 8548 MiB.
+    // 20000 MiB free -> fits whole.
+    const fit_cand = [_]Candidate{partialCand(.cuda, 20000, 32, 200, 100, 16)};
+    const whole = plan(.{ .n_ctx = 4096, .candidates = &fit_cand });
+    try std.testing.expectEqual(Target.cuda, whole.target);
+    try std.testing.expectEqual(PlacementPolicy.whole_device, whole.policy);
+    try std.testing.expect(whole.canFit());
+    try std.testing.expectEqual(Target.cuda, whole.layerTarget(0, 32));
+    try std.testing.expectEqual(Target.cuda, whole.layerTarget(31, 32));
+    try std.testing.expectEqual(@as(u64, 6400 * mib), whole.breakdown.device_weights_bytes);
+    try std.testing.expectEqual(@as(u64, 2048 * mib), whole.breakdown.device_kv_bytes);
+    try std.testing.expect(whole.breakdown.device_total_bytes > 0);
+    try std.testing.expect(!whole.recomputation_advised);
+
+    // Partial offload: 4000 MiB free -> 13 layers fit on Vulkan, 19 on CPU.
+    const part_cand = [_]Candidate{partialCand(.vulkan, 4000, 32, 200, 100, 16)};
+    const part = plan(.{ .n_ctx = 4096, .candidates = &part_cand });
+    try std.testing.expectEqual(Target.vulkan, part.target);
+    try std.testing.expectEqual(PlacementPolicy.prefix_layers, part.policy);
+    try std.testing.expectEqual(@as(usize, 13), part.layers);
+    try std.testing.expectEqual(Target.vulkan, part.layerTarget(12, 32));
+    try std.testing.expectEqual(Target.cpu, part.layerTarget(13, 32));
+    try std.testing.expectEqual(Target.cpu, part.layerTarget(31, 32));
+    try std.testing.expect(part.breakdown.device_weights_bytes > 0);
+    try std.testing.expect(part.breakdown.host_weights_bytes > 0);
+    try std.testing.expect(part.breakdown.device_kv_bytes > 0);
+    try std.testing.expect(part.breakdown.host_kv_bytes > 0);
+
+    var buf: [512]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try describeBreakdown(&part, &w);
+    try std.testing.expect(std.mem.indexOf(u8, w.buffered(), "Policy: prefix_layers") != null);
+    try std.testing.expect(std.mem.indexOf(u8, w.buffered(), "Device VRAM:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, w.buffered(), "Host RAM:") != null);
 }

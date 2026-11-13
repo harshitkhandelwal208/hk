@@ -5,12 +5,12 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 199,
-  "import_edges": 427,
+  "file_nodes": 201,
+  "import_edges": 429,
   "unowned_files": 0,
   "status_counts": {
-   "done": 11,
-   "partial": 19,
+   "done": 12,
+   "partial": 18,
    "in-progress": 2,
    "prototype": 7,
    "storage-only": 1,
@@ -269,16 +269,17 @@
   {
    "id": "kv-cache",
    "type": "subsystem",
-   "label": "KV cache (segmented f16)",
-   "status": "partial",
+   "label": "KV cache (segmented & paged)",
+   "status": "done",
    "plan": [
     80,
     50
    ],
    "paths": [
-    "src/engine/kv.zig"
+    "src/engine/kv.zig",
+    "src/engine/kv_cache.zig"
    ],
-   "note": "256-position segments, tiled keys. No paging/quant/compression/eviction."
+   "note": "Segmented and paged KV cache with copy-on-write prefix sharing, SWA, and chunked prefill."
   },
   {
    "id": "sampler",
@@ -1520,6 +1521,14 @@
    "owner": "backend-vulkan"
   },
   {
+   "id": "file:shaders/flash_attention.comp",
+   "type": "file",
+   "label": "shaders/flash_attention.comp",
+   "lang": "glsl",
+   "loc": 153,
+   "owner": "backend-vulkan"
+  },
+  {
    "id": "file:shaders/mm.comp",
    "type": "file",
    "label": "shaders/mm.comp",
@@ -1836,7 +1845,7 @@
    "type": "file",
    "label": "src/engine.zig",
    "lang": "zig",
-   "loc": 18,
+   "loc": 21,
    "owner": "engine"
   },
   {
@@ -1885,6 +1894,14 @@
    "label": "src/engine/kv.zig",
    "lang": "zig",
    "loc": 379,
+   "owner": "kv-cache"
+  },
+  {
+   "id": "file:src/engine/kv_cache.zig",
+   "type": "file",
+   "label": "src/engine/kv_cache.zig",
+   "lang": "zig",
+   "loc": 365,
    "owner": "kv-cache"
   },
   {
@@ -3759,6 +3776,11 @@
    "type": "implemented_by"
   },
   {
+   "s": "kv-cache",
+   "t": "file:src/engine/kv_cache.zig",
+   "type": "implemented_by"
+  },
+  {
    "s": "sampler",
    "t": "file:src/sampler.zig",
    "type": "implemented_by"
@@ -3836,6 +3858,11 @@
   {
    "s": "backend-vulkan",
    "t": "file:shaders/embed.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "backend-vulkan",
+   "t": "file:shaders/flash_attention.comp",
    "type": "implemented_by"
   },
   {
@@ -5335,6 +5362,11 @@
   },
   {
    "s": "file:src/engine.zig",
+   "t": "file:src/engine/kv_cache.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine.zig",
    "t": "file:src/engine/matmul.zig",
    "type": "imports"
   },
@@ -5495,6 +5527,11 @@
   },
   {
    "s": "file:src/engine/kv.zig",
+   "t": "file:src/engine/config.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine/kv_cache.zig",
    "t": "file:src/engine/config.zig",
    "type": "imports"
   },
@@ -6968,7 +7005,7 @@
   {
    "s": "engine",
    "t": "kv-cache",
-   "imports": 5
+   "imports": 6
   },
   {
    "s": "engine",
@@ -7053,7 +7090,7 @@
   {
    "s": "kv-cache",
    "t": "engine",
-   "imports": 1
+   "imports": 2
   },
   {
    "s": "memory-planner",

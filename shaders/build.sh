@@ -11,7 +11,7 @@ for t in f32 f16 bf16 q4_0 q4_1 q5_0 q5_1 q8_0 iq4_nl q2_k q3_k q4_k q5_k q6_k i
         glslc --target-env=vulkan1.2 -O -I. -DTYPE_"$T" "$k.comp" -o "$out/${k}_$t.spv"
     done
 done
-for k in rmsnorm rope_kv attention attention_part attention_combine swiglu swiglu_pair add vadd mm_sparse_2_4 mm_bsr; do
+for k in rmsnorm rope_kv attention attention_part attention_combine swiglu swiglu_pair add vadd mm_sparse_2_4 mm_bsr flash_attention; do
     glslc --target-env=vulkan1.2 -O -I. "$k.comp" -o "$out/$k.spv"
 done
 # Cooperative matrix prompt attention, one binary per head size it supports.

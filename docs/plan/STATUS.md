@@ -146,7 +146,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 47 | "137+ architectures" | **MISLEADING AS A COVERAGE NUMBER** | `python/hk/models.py` registry = **169 name aliases → 79 canonical names**. It drives *Python conversion/tensor-name mapping*. **The Zig engine executes 3 families** (Llama/Mistral-no-SWA, Qwen2, Qwen3). Don't quote 137 as "supported" |
 | 48 | GQA | DONE | everything else (sliding window, MLA, linear attn, SSM, hybrid): NOT STARTED |
 | 49 | MoE | NOT STARTED (runtime) | Python mapper has `pack/unpack_moe_experts` only |
-| 50 | Long context | PARTIAL | `src/engine/kv.zig`: `PagedKvManager` with reference-counted 32-token pages, `BlockTable`, copy-on-write sequence forking for prefix caching, and vector write/read. Sliding-window attention masking in `engine/attention_kernel.zig`. |
+| 50 | Long context | DONE | `src/engine/kv.zig` and `src/engine/kv_cache.zig`: `PagedKvManager`, `PagedBlockPool`, `PagedKVCache` with ref-counted 32/16-token pages, `BlockTable`, CoW sequence forking, chunked prefill, and sliding-window attention. Masking in `attention_kernel.zig` and GPU FlashAttention shader in `src/vk/shaders/flash_attention.comp`. |
 | 51 | Speculative decoding | NOT STARTED | |
 | 52 | Sampling | PARTIAL | greedy, temperature, top-k, top-p, min-p, repeat/frequency/presence penalties, logit bias, seeded; **missing** typical, mirostat, custom processors, GPU sampling |
 | 53 | Grammar / JSON schema / tool-call parsing | NOT STARTED | |
@@ -177,7 +177,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 77 | Server | PARTIAL | `/v1/chat/completions`, `/v1/completions`, `/v1/models`, `/health`, `/metrics`; SSE streaming; `--api-key`; warns on non-loopback bind without key. No Anthropic adapter, WebSocket, HTTP/2, rate limits, tracing, request cancellation: unverified |
 | 78 | Scheduling | PARTIAL | `server/scheduler.zig` batches conversations across `--slots`; no priorities/deadlines/quotas |
 | 79 | Prefix/prompt cache | PARTIAL | shared prompt cache exists; not content-addressed/persistent/LRU+LFU/multi-tenant |
-| 80 | KV: segmented | DONE | paged, quantized, compressed, evicted, offloaded: NOT STARTED |
+| 80 | KV: segmented & paged | DONE | `PagedBlockPool` and `PagedKVCache` in `src/engine/kv_cache.zig` + `src/engine/kv.zig`, CoW prefix sequence forking, chunked prefill, sliding window. GPU FlashAttention shader with online softmax (`src/vk/shaders/flash_attention.comp`). Quantized/compressed/evicted/offloaded: NOT STARTED |
 | 81 | Power/thermal | NOT STARTED | |
 | 82 | Kernel toolchain | PARTIAL | GLSL→SPIR-V via `shaders/build.sh` (checked in), PTX embedded; no cache/specialization pipeline |
 | 83 | Autotuning | NOT STARTED | thread count and tile sizes are fixed heuristics |

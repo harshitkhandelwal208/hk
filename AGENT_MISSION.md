@@ -14,6 +14,7 @@ You MUST strictly adhere to the guidelines set forth in:
 - `docs/plan/STATUS.md`
 
 ### Core Non-Negotiables (from AGENTS.md):
+0. **Universal Framework Principle**: HK must NOT be specialized or tuned for a single architecture (e.g. LLaMA only) or single vendor silicon (e.g. NVIDIA CUDA only). HK is engineered as an open, universal neural tensor standard and execution engine supporting diverse architectures (MoE, Gemma, Mistral, Qwen, Vision, Audio) across generic CPUs, Vulkan, ROCm/HIP, and CUDA with identical numerical invariants.
 1. **Memory First**: Streaming, mmap, bounded buffers. Always measure and report peak RSS for anything touching model tensors or data.
 2. **No Silent Failure**: Output must be correct or flagged — never silently wrong. Every guard must have a test that turns red when the guard is removed.
 3. **Truthful Claims**: State only what was actually run and verified on hardware. "Cross-compiled" ≠ "tested"; "not run" must be stated explicitly.

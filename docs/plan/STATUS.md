@@ -198,7 +198,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 91 | SDKs | PARTIAL | C, C++, Rust, Go, C#, Java, TypeScript, Python have tested bindings (`tests/bindings/run.sh`). **Kotlin, Swift, Obj-C, plain JS (separate) NOT STARTED.** No binding exposes full inference+streaming parity yet (verify per binding) |
 | 92 | Packaging | PARTIAL | PyPI `hknt`, npm `hkntf`. crates.io/NuGet/Maven/SPM/vcpkg/Conan/Homebrew/winget not published |
 | 93 | `hk pull` | PARTIAL | resume, retries, redirect credential-drop, Hub SHA-256, GGUF + sharded safetensors, `search/list/rm`. **Split GGUF not downloaded**; no parallel download, no registry/S3, no dedupe; interrupted *conversion* restarts |
-| 94 | Registry | NOT STARTED | |
+| 94 | Registry | DONE (Native Zig) | `src/registry.zig`: `ModelIdentity`, `RegistryEntry`, `ModelRegistry` (indexing by architecture, storage type, and hardware compatibility), `resolveExternalReference`, and `verifyEntry`. |
 | 96 | Sharding | PARTIAL | header `split_index/split_count`, Python `ShardedHKFile`; no lazy/parallel/distributed loading verified |
 | 97 | Editor GUI | PROTOTYPE | `tools/hk_editor_gui.py`, `python/hk/gui.py` |
 | 98 | Tensor inspection | PARTIAL | `inspect`, `dump`, `hash`, `eval`, `metadata`; no `tensor list/info/stats/diff/export` |

@@ -465,7 +465,7 @@ flowchart LR
 | `lineage-vcs` | Branching/merging/deltas/adapter execution | done | 37, 38, 39, 40 | 1 | 328 | Cryptographic DAG lineage graph, commit trees, branching, and weight merging (SLERP, linear, task arithmetic). |
 | `distributed` | Multi-GPU / distributed inference + training | partial | 74, 75, 115 | 1 | 307 | Tensor and pipeline parallelism with collective operations (allreduce, allgather, broadcast). |
 | `model-evolution` | Model-evolution loop + architecture search | done | 112, 113, 114, 155 | 1 | 178 | Autonomous architecture evolution, candidate mutation, hardware governor budgeting, and regression rollback. |
-| `tests-suite` | Test suites | partial | 102, 103, 104, 138 | 27 | 8543 | Zig unit/e2e suites, pytest, bindings runner. Reference tests: gguf package (quant decoders), HF Transformers (logits), llama.cpp (perplexity, tokenizer). No MMLU/code/math/long-context suites; no fuzzing. |
+| `tests-suite` | Test suites | partial | 102, 103, 104, 138 | 27 | 8617 | Zig unit/e2e suites, pytest, bindings runner. Reference tests: gguf package (quant decoders), HF Transformers (logits), llama.cpp (perplexity, tokenizer). No MMLU/code/math/long-context suites; no fuzzing. |
 | `dev-tools` | Dev tools (generators, probes, HF Space app) | done | 84 | 5 | 996 | Quant fixture/table and Unicode table generators, hk-probe, SPIR-V extraction helper, HF Space demo. |
 
 ### Backends

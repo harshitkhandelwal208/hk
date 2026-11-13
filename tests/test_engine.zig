@@ -25,7 +25,7 @@ fn addVec(w: *hk.HKWriter, a: std.mem.Allocator, bufs: *std.ArrayList([]f32), pr
     try w.addTensor(.{ .name = name, .storage_type = .f32, .ndim = 1, .shape = .{ n, 0, 0, 0, 0, 0, 0, 0 }, .data = std.mem.sliceAsBytes(buf) });
 }
 
-fn writeTiny(a: std.mem.Allocator, path: []const u8) !void {
+fn writeTinyArch(a: std.mem.Allocator, path: []const u8, arch_name: []const u8) !void {
     var w = hk.HKWriter.init(a);
     defer w.deinit();
     var bufs: std.ArrayList([]f32) = .empty;
@@ -35,20 +35,31 @@ fn writeTiny(a: std.mem.Allocator, path: []const u8) !void {
     }
     var prng = std.Random.DefaultPrng.init(99);
 
-    try w.addMetadataString("general.architecture", "llama");
-    try w.addMetadataInt("llama.block_count", n_layers);
-    try w.addMetadataInt("llama.context_length", 64);
-    try w.addMetadataInt("llama.embedding_length", dim);
-    try w.addMetadataInt("llama.feed_forward_length", ffn);
-    try w.addMetadataInt("llama.attention.head_count", n_heads);
-    try w.addMetadataInt("llama.attention.head_count_kv", n_kv);
-    try w.addMetadataFloat("llama.attention.layer_norm_rms_epsilon", 1e-5);
-    try w.addMetadataFloat("llama.rope.freq_base", 10000.0);
-    try w.addMetadataInt("llama.rope.dimension_count", head_dim);
+    var kbuf: [64]u8 = undefined;
+    const mk = struct {
+        fn k(buf: []u8, prefix: []const u8, suffix: []const u8) []const u8 {
+            return std.fmt.bufPrint(buf, "{s}.{s}", .{ prefix, suffix }) catch unreachable;
+        }
+    }.k;
+
+    try w.addMetadataString("general.architecture", arch_name);
+    try w.addMetadataInt(mk(&kbuf, arch_name, "block_count"), n_layers);
+    try w.addMetadataInt(mk(&kbuf, arch_name, "context_length"), 64);
+    try w.addMetadataInt(mk(&kbuf, arch_name, "embedding_length"), dim);
+    try w.addMetadataInt(mk(&kbuf, arch_name, "feed_forward_length"), ffn);
+    try w.addMetadataInt(mk(&kbuf, arch_name, "attention.head_count"), n_heads);
+    try w.addMetadataInt(mk(&kbuf, arch_name, "attention.head_count_kv"), n_kv);
+    try w.addMetadataFloat(mk(&kbuf, arch_name, "attention.layer_norm_rms_epsilon"), 1e-5);
+    try w.addMetadataFloat(mk(&kbuf, arch_name, "rope.freq_base"), 10000.0);
+    try w.addMetadataInt(mk(&kbuf, arch_name, "rope.dimension_count"), head_dim);
 
     try addMat(&w, a, &bufs, &prng, "token_embd.weight", vocab, dim);
     try addVec(&w, a, &bufs, &prng, "output_norm.weight", dim);
     try addMat(&w, a, &bufs, &prng, "output.weight", vocab, dim);
+
+    const is_qwen2 = std.mem.eql(u8, arch_name, "qwen2");
+    const is_gemma = std.mem.eql(u8, arch_name, "gemma");
+
     var name: [64]u8 = undefined;
     for (0..n_layers) |l| {
         const n = struct {
@@ -65,8 +76,22 @@ fn writeTiny(a: std.mem.Allocator, path: []const u8) !void {
         try addMat(&w, a, &bufs, &prng, try a.dupe(u8, n(&name, l, "ffn_gate.weight")), ffn, dim);
         try addMat(&w, a, &bufs, &prng, try a.dupe(u8, n(&name, l, "ffn_up.weight")), ffn, dim);
         try addMat(&w, a, &bufs, &prng, try a.dupe(u8, n(&name, l, "ffn_down.weight")), dim, ffn);
+
+        if (is_qwen2) {
+            try addVec(&w, a, &bufs, &prng, try a.dupe(u8, n(&name, l, "attn_q.bias")), n_heads * head_dim);
+            try addVec(&w, a, &bufs, &prng, try a.dupe(u8, n(&name, l, "attn_k.bias")), n_kv * head_dim);
+            try addVec(&w, a, &bufs, &prng, try a.dupe(u8, n(&name, l, "attn_v.bias")), n_kv * head_dim);
+        }
+        if (is_gemma) {
+            try addVec(&w, a, &bufs, &prng, try a.dupe(u8, n(&name, l, "attn_q_norm.weight")), head_dim);
+            try addVec(&w, a, &bufs, &prng, try a.dupe(u8, n(&name, l, "attn_k_norm.weight")), head_dim);
+        }
     }
     try w.writeToFile(path);
+}
+
+fn writeTiny(a: std.mem.Allocator, path: []const u8) !void {
+    try writeTinyArch(a, path, "llama");
 }
 
 const Fixture = struct {
@@ -241,4 +266,53 @@ test "logits for several items match one by one" {
     const many = try f.model.logitsMany(&picks);
     try std.testing.expectEqual(@as(usize, 3 * vocab), many.len);
     for (0..3) |k| try std.testing.expect(maxDiff(&want[k], many[k * vocab ..][0..vocab]) < 1e-5);
+}
+
+test "Gemma architecture executes with gelu_tanh and qk_norm" {
+    const a = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(a);
+    defer arena.deinit();
+    const path = "test_engine_gemma.hk";
+    try writeTinyArch(arena.allocator(), path, "gemma");
+    defer std.Io.Dir.cwd().deleteFile(std.Options.debug_io, path) catch {};
+
+    var r = try hk.HKReader.open(path, a);
+    defer r.deinit();
+    var diag = hk.engine.Diag{};
+    var model = try hk.engine.Model.init(a, &r, .{ .n_threads = 2, .n_batch = 8 }, &diag);
+    defer model.deinit();
+
+    try std.testing.expectEqual(hk.engine.config.Arch.gemma, model.cfg.arch);
+    try std.testing.expectEqual(hk.engine.config.FfnAct.gelu_tanh, model.cfg.ffn_act);
+    try std.testing.expect(model.cfg.qk_norm);
+
+    const toks = [_]u32{ 1, 5, 12, 24 };
+    try model.forward(&toks, 0);
+    const logits = model.logitsFor(toks.len - 1);
+    try std.testing.expectEqual(vocab, logits.len);
+    for (logits) |v| try std.testing.expect(std.math.isFinite(v));
+}
+
+test "Qwen2 architecture executes with qkv_bias" {
+    const a = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(a);
+    defer arena.deinit();
+    const path = "test_engine_qwen2.hk";
+    try writeTinyArch(arena.allocator(), path, "qwen2");
+    defer std.Io.Dir.cwd().deleteFile(std.Options.debug_io, path) catch {};
+
+    var r = try hk.HKReader.open(path, a);
+    defer r.deinit();
+    var diag = hk.engine.Diag{};
+    var model = try hk.engine.Model.init(a, &r, .{ .n_threads = 2, .n_batch = 8 }, &diag);
+    defer model.deinit();
+
+    try std.testing.expectEqual(hk.engine.config.Arch.qwen2, model.cfg.arch);
+    try std.testing.expect(model.cfg.qkv_bias);
+
+    const toks = [_]u32{ 2, 7, 19, 31 };
+    try model.forward(&toks, 0);
+    const logits = model.logitsFor(toks.len - 1);
+    try std.testing.expectEqual(vocab, logits.len);
+    for (logits) |v| try std.testing.expect(std.math.isFinite(v));
 }

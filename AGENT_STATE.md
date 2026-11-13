@@ -5,7 +5,7 @@
 - **Active Branch**: `feat/hk-2.1-rocm`
 - **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1 THROUGH 3.0 (UNIVERSAL NEURAL RUNTIME)
 - **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1 - 3.0 Universal Runtime)
-- **Last Verified Test**: 250 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 26/26 e2e; 8/8 bindings suites)
+- **Last Verified Test**: 252 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 26/26 e2e; 8/8 bindings suites)
 
 ## Milestone 2.1: Hardware Acceleration & Zero-Dependency Python (100% COMPLETE)
 - [x] Abstracted inline-PTX in `src/cuda_device.zig` behind per-architecture primitives (`src/gpu_prims.zig`).
@@ -158,8 +158,12 @@
 - [x] Multi-Model Execution & Memory Planner (`src/engine/planner.zig`):
   - Updated `planExecution` with accurate MoE weight scaling for routed experts.
   - Verified memory footprint parity between dense and MoE configurations.
+- [x] Multi-Architecture Execution Verification (`tests/test_engine.zig`):
+  - Verified Gemma architecture execution with `gelu_tanh` activation and per-head `qk_norm`.
+  - Verified Qwen2 architecture execution with `qkv_bias` projection vectors.
+  - Verified numerical determinism across diverse non-LLaMA model configurations.
 - [x] Continuous Verification:
-  - Passed `zig build test` (250/257 pass, 7 skipped ROCm device tests).
+  - Passed `zig build test` (252/259 pass, 7 skipped ROCm device tests).
   - Passed `zig build test -Doptimize=ReleaseFast`.
   - Passed `zig build test -Dcpu=x86_64_v3`.
   - Passed `zig build test -Dcpu=x86_64`.

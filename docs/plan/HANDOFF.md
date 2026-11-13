@@ -48,11 +48,12 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - `src/engine/planner.zig`: Updated `planExecution` to account for routed MoE expert counts in MLP weight estimation; verified with unit tests.
   - `src/models/registry.zig`: Added canonical architecture descriptors for `mixtral` (MoE), `deepseek_moe`, `clip` (Vision), and `whisper` (Audio), parameterized with RoPE styles, normalization types, and vocabulary metadata.
   - `src/distributed.zig`: `DeviceRank`, `CollectiveContext` with in-place SIMD `allreduceSum`, `allgather`, `broadcast`, and `columnParallelForward` / `rowParallelForward` linear layer sharding with exact GEMM parity.
+  - `tests/test_engine.zig`: Added multi-architecture execution tests verifying Gemma (`gelu_tanh` and `qk_norm`) and Qwen2 (`qkv_bias`) forward passes with full numerical stability and determinism.
   - Universal hardware-neutral invariant: HK is not specialized for any single architecture (e.g. LLaMA only) or vendor silicon (e.g. NVIDIA only); it executes universally across CPU, Vulkan, CUDA, and ROCm/HIP.
 
 **Verification results (all executed on this machine):**
-- `zig build test`: **250 pass, 7 skip (0 failures)**.
-- `zig build test -Doptimize=ReleaseFast`: **250 pass, 7 skip (0 failures)**.
+- `zig build test`: **252 pass, 7 skip (0 failures)**.
+- `zig build test -Doptimize=ReleaseFast`: **252 pass, 7 skip (0 failures)**.
 - `zig build test -Dcpu=x86_64_v3`: **pass (0 failures)**.
 - `zig build test -Dcpu=x86_64`: **pass (0 failures)**.
 - `zig build test-e2e`: **26/26 pass (0 failures)**.

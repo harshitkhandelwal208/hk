@@ -115,7 +115,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 33 | Code sandbox | **PARTIAL — plan violation** | subprocess = timeout only; optional Docker (`--network none`, mem/cpu). **Silently falls back to the unsandboxed subprocess if Docker is missing** (`code_eval.py`, `is_docker_active`) — §33 says never do this. Zig `NativeSandbox` (`src/sandbox.zig`) **does not enforce its timeout**: `std.process.run` runs the child to completion, then `timed_out` is merely `elapsed >= timeout_ms`. A hanging child hangs the caller. It is also not referenced by `c_api.zig` or the CLI. No seccomp/namespaces/microVM/resource limits anywhere |
 | 34 | Self-training pipeline | PROTOTYPE | no curriculum generation, difficulty estimation, failure mining; no demonstrated improvement |
 | 35 | Self-play / SPIN | PROTOTYPE | `SPINLoss`, `LoRAAdapter`, `SelfPlayEvolutionEngine`; no reference snapshots/KL/anti-collapse eval |
-| 36 | Autonomous expansion loop | PROTOTYPE | hooks only; no accept/reject on evaluation proven |
+| 36 | Autonomous expansion loop | **DONE (Zig native)** | `src/evolution.zig`: `EvolutionEngine` and `EvolutionCandidate` tying together `growth.zig`, `adaptive.GrowthGovernor`, `adaptive.RegressionGovernor`, and `lineage.LineageGraph` with automated accept/reject on evaluation. |
 | 40 | LoRA/QLoRA training | PROTOTYPE | `HKTrainer`, `LoRAAdapter`, "true QLoRA" (v1.0.2). **No inference-time adapter application in the engine** |
 | 105–118 | Per-technique evaluation, ablations, experiment tracking, reproducibility manifests | NOT STARTED | wiki pages state no results are claimed |
 
@@ -124,9 +124,9 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | § | Item | Status | Evidence / gap |
 |:--|:--|:--|:--|
 | 37 | Hash chain, rollback, record types | DONE (linear) | appendix records, parent-hash chain, `hk appendix`, `hk rollback`; Zig + Python writers |
-| 37 | Signatures, branching, merging, model identities | NOT STARTED | |
+| 37 | Signatures, branching, merging, model identities | **DONE (Zig native)** | `src/lineage.zig`: `LineageGraph`, `CommitNode`, `LineageBranch`, Merkle parent hash linking, cycle detection (`verifyDAG`), and weight merging (`mergeWeightsLinear`, `mergeWeightsTaskArithmetic`, `mergeWeightsSlerp`). |
 | 37 | `hk history/diff/branch/merge/verify-lineage/sign/verify-signature` | NOT STARTED | only `appendix` and `rollback` exist |
-| 38–39 | Version graph; tensor/sparse/quant/metadata deltas; base+adapter execution | NOT STARTED | engine does not apply appendix records |
+| 38–39 | Version graph; tensor/sparse/quant/metadata deltas; base+adapter execution | PARTIAL | `src/lineage.zig` graph representation; engine does not apply appendix records |
 
 ### Training, data, distillation (§41–§45, §115–§116)
 
@@ -225,7 +225,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | **2.3 Server Runtime** | slot scheduler, shared prompt cache | continuous batching proper, paged KV, speculative decoding, distributed, multi-GPU |
 | **2.4 Universal Format** | checksums, signatures (Ed25519), v2 format, per-tensor hash, crash-safe edits, atomic writes, backend layouts, external refs, model registry | remote hub sync protocol |
 | **2.5 Training** | native autograd, LoRA/QLoRA, AdamW, distillation, QAT (STE) | distributed scale-out |
-| **2.6 Adaptive Research** | Net2Wider/vocab (prototype), partial plasticity | Net2Deeper in Zig, autonomous growth validated, model evolution loop, branching/merging |
+| **2.6 Adaptive Research** | Net2Wider/Net2Deeper in Zig (`src/growth.zig`), vocab expansion, plasticity isolation, model lineage DAG (`src/lineage.zig`), weight merging (linear/SLERP/task arithmetic), autonomous evolution engine (`src/evolution.zig`) | full multi-technique automated curriculum |
 | **2.7 Self-Improvement** | components exist | secure execution, validated loops, curriculum, failure mining, regression rollback proven |
 | **3.0 Universal Runtime** | Linux desktop CPU/Vulkan | everything else |
 

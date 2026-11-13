@@ -5,18 +5,18 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 204,
-  "import_edges": 435,
+  "file_nodes": 206,
+  "import_edges": 440,
   "unowned_files": 0,
   "status_counts": {
-   "done": 14,
+   "done": 16,
    "partial": 18,
    "in-progress": 2,
    "prototype": 6,
    "storage-only": 1,
    "legacy": 1,
    "untested-hw": 1,
-   "not-started": 17
+   "not-started": 15
   }
  },
  "nodes": [
@@ -897,17 +897,19 @@
   },
   {
    "id": "lineage-vcs",
-   "type": "planned",
+   "type": "subsystem",
    "label": "Branching/merging/deltas/adapter execution",
-   "status": "not-started",
+   "status": "done",
    "plan": [
     37,
     38,
     39,
     40
    ],
-   "paths": [],
-   "note": ""
+   "paths": [
+    "src/lineage.zig"
+   ],
+   "note": "Cryptographic DAG lineage graph, commit trees, branching, and weight merging (SLERP, linear, task arithmetic)."
   },
   {
    "id": "distributed",
@@ -951,17 +953,19 @@
   },
   {
    "id": "model-evolution",
-   "type": "planned",
+   "type": "subsystem",
    "label": "Model-evolution loop + architecture search",
-   "status": "not-started",
+   "status": "done",
    "plan": [
     112,
     113,
     114,
     155
    ],
-   "paths": [],
-   "note": ""
+   "paths": [
+    "src/evolution.zig"
+   ],
+   "note": "Autonomous architecture evolution, candidate mutation, hardware governor budgeting, and regression rollback."
   },
   {
    "id": "extension-system",
@@ -1976,6 +1980,14 @@
    "owner": "backend-abstraction"
   },
   {
+   "id": "file:src/evolution.zig",
+   "type": "file",
+   "label": "src/evolution.zig",
+   "lang": "zig",
+   "loc": 178,
+   "owner": "model-evolution"
+  },
+  {
    "id": "file:src/expansion.zig",
    "type": "file",
    "label": "src/expansion.zig",
@@ -2110,6 +2122,14 @@
    "lang": "zig",
    "loc": 88,
    "owner": "kernels-engine"
+  },
+  {
+   "id": "file:src/lineage.zig",
+   "type": "file",
+   "label": "src/lineage.zig",
+   "lang": "zig",
+   "loc": 328,
+   "owner": "lineage-vcs"
   },
   {
    "id": "file:src/main.zig",
@@ -2292,7 +2312,7 @@
    "type": "file",
    "label": "src/root.zig",
    "lang": "zig",
-   "loc": 87,
+   "loc": 89,
    "owner": "c-abi"
   },
   {
@@ -4427,8 +4447,18 @@
    "type": "implemented_by"
   },
   {
+   "s": "lineage-vcs",
+   "t": "file:src/lineage.zig",
+   "type": "implemented_by"
+  },
+  {
    "s": "distributed",
    "t": "file:src/distributed.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "model-evolution",
+   "t": "file:src/evolution.zig",
    "type": "implemented_by"
   },
   {
@@ -5717,6 +5747,21 @@
    "type": "imports"
   },
   {
+   "s": "file:src/evolution.zig",
+   "t": "file:src/adaptive.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/evolution.zig",
+   "t": "file:src/growth.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/evolution.zig",
+   "t": "file:src/lineage.zig",
+   "type": "imports"
+  },
+  {
    "s": "file:src/gguf.zig",
    "t": "file:src/buf.zig",
    "type": "imports"
@@ -6278,6 +6323,11 @@
   },
   {
    "s": "file:src/root.zig",
+   "t": "file:src/evolution.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
    "t": "file:src/expansion.zig",
    "type": "imports"
   },
@@ -6319,6 +6369,11 @@
   {
    "s": "file:src/root.zig",
    "t": "file:src/kernels.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/lineage.zig",
    "type": "imports"
   },
   {
@@ -7186,6 +7241,16 @@
   {
    "s": "memory-planner",
    "t": "engine",
+   "imports": 1
+  },
+  {
+   "s": "model-evolution",
+   "t": "growth",
+   "imports": 2
+  },
+  {
+   "s": "model-evolution",
+   "t": "lineage-vcs",
    "imports": 1
   },
   {

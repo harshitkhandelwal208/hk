@@ -32,8 +32,10 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - `src/training.zig`: native autograd derivatives (GEMM, SiLU, RMSNorm, Softmax, CrossEntropy), finite-difference gradcheck, frozen-base `LoRALayer` (adapters A & B, zero memory for base weights), `AdamWOptimizer` with decoupled weight decay, `fakeQuantizeSTE` for Quantization-Aware Training (QAT), and `computeDistillationLoss` (teacher-student soft KL + hard CE).
   - `src/sparsity.zig`: 2:4 structured sparse GEMV & GEMM, Block Sparse Row (BSR) GEMV & GEMM, `encodeBSR_F32`, `decodeBSR_F32`. Memory-first zero-alloc streaming; numerical parity vs dense GEMM verified across block shapes (4x4, 8x8, 16x16) and sizes.
   - Vulkan compute shaders `shaders/mm_sparse_2_4.comp` and `shaders/mm_bsr.comp` compiled to SPIR-V in `src/vk/spv/` via `glslc`.
-- **Milestone 2.6 (Net2Net Model Surgery)**:
+- **Milestone 2.6 (Adaptive Research Platform & Model Lineage)**:
   - `src/growth.zig`: native `net2Wider`, `net2Deeper`, `net2WiderSwiGLU` (exact zero-init bitwise equivalence verified), `expandVocab`, `applyPlasticityMaskRows`, `applyPlasticityMaskCols`.
+  - `src/lineage.zig`: cryptographic DAG lineage graph (`LineageGraph`, `CommitNode`, `LineageBranch`), Merkle parent hash linking, cycle detection and topological sorting (`verifyDAG`), model weight merging (`mergeWeightsLinear`, `mergeWeightsTaskArithmetic`, `mergeWeightsSlerp`).
+  - `src/evolution.zig`: `EvolutionEngine` and `EvolutionCandidate` coordinating model surgery, hardware resource governance (`GrowthGovernor`), regression prevention (`RegressionGovernor`), and automated DAG branch commits.
 - **Milestone 2.7 (Continual Learning Governors)**:
   - `src/adaptive.zig`: `GrowthGovernor` (hardware VRAM and expansion ratio budgets) and `RegressionGovernor` (fail-closed rollback on candidate loss regression).
 - **Milestones 2.8 - 3.0 (Multi-GPU Synchronization & Production Packaging)**:
@@ -41,14 +43,14 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - Verified across all ISA targets and language bindings.
 
 **Verification results (all executed on this machine):**
-- `zig build test`: **231 pass, 7 skip (0 failures)**.
-- `zig build test -Doptimize=ReleaseFast`: **231 pass, 7 skip (0 failures)**.
+- `zig build test`: **234 pass, 7 skip (0 failures)**.
+- `zig build test -Doptimize=ReleaseFast`: **234 pass, 7 skip (0 failures)**.
 - `zig build test -Dcpu=x86_64_v3`: **pass (0 failures)**.
 - `zig build test -Dcpu=x86_64`: **pass (0 failures)**.
-- `zig build test-e2e`: **24/24 pass (0 failures)**.
+- `zig build test-e2e`: **26/26 pass (0 failures)**.
 - `tests/bindings/run.sh`: **8/8 language suites pass (0 failures: C, C++, Rust, Go, C#, Java, TypeScript)**.
 - `python3 tests/test_zero_dependency.py`: **pass (0 failures)**.
-- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 204 files, 435 import edges, 0 unowned files, 0 errors**.
+- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 206 files, 440 import edges, 0 unowned files, 0 errors**.
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 

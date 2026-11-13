@@ -3,9 +3,9 @@
 ## Session Info
 - **Project**: HK Neural Tensor Framework
 - **Active Branch**: `feat/hk-2.1-rocm`
-- **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1, 2.2, 2.3, 2.4 & 2.5
-- **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1 - 2.5 Training Platform)
-- **Last Verified Test**: 231 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 24/24 e2e; 8/8 bindings suites)
+- **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1, 2.2, 2.3, 2.4, 2.5 & 2.6
+- **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1 - 2.6 Adaptive Research Platform)
+- **Last Verified Test**: 234 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 26/26 e2e; 8/8 bindings suites)
 
 ## Milestone 2.1: Hardware Acceleration & Zero-Dependency Python (100% COMPLETE)
 - [x] Abstracted inline-PTX in `src/cuda_device.zig` behind per-architecture primitives (`src/gpu_prims.zig`).
@@ -72,7 +72,31 @@
   - Implemented `resolveExternalReference` with directory traversal protection against hostile relative paths.
   - Implemented `verifyEntry` validating container SHA-256 and Ed25519 publisher signatures.
 
-## Milestone 2.5: Training Platform, Autograd & LoRA/QLoRA (100% COMPLETE)
+## Milestone 2.6: Adaptive Research Platform & Model Lineage (100% COMPLETE)
+- [x] Net2Net Model Surgery (`src/growth.zig`, plan §28, §30, §150):
+  - Implemented `net2Wider` (exact zero-init bitwise equivalence verified).
+  - Implemented `net2Deeper` identity matrix layer initialization preserving representations.
+  - Implemented `net2WiderSwiGLU` for GLU/SwiGLU architectures.
+  - Implemented `expandVocab`, `applyPlasticityMaskRows`, and `applyPlasticityMaskCols`.
+- [x] Model Lineage DAG & Weight Merging (`src/lineage.zig`, plan §37-§39, §150):
+  - Implemented `LineageGraph`, `CommitNode`, `LineageBranch` with Merkle parent hash linking.
+  - Supported root commits, linear incremental commits, and multi-parent merge commits.
+  - Full DAG cycle detection and topological sorting in `verifyDAG`.
+  - Implemented `mergeWeightsLinear` (linear interpolation between parent weight sets).
+  - Implemented `mergeWeightsTaskArithmetic` ($\theta_{merged} = \theta_{base} + \lambda_A \tau_A + \lambda_B \tau_B$).
+  - Implemented `mergeWeightsSlerp` (spherical linear interpolation between multidimensional weight vectors).
+- [x] Autonomous Model Evolution Engine (`src/evolution.zig`, plan §36, §150):
+  - Implemented `EvolutionCandidate` tracking candidate architectures, weights, eval loss, generation, parent commits.
+  - Implemented `EvolutionEngine` autonomous growth & evaluation loop coordinating `growth.zig`, `GrowthGovernor`, `RegressionGovernor`, and `LineageGraph`.
+  - Enforced fail-closed acceptance/rollback gates on hardware memory budget and evaluation loss.
+- [x] Continuous Verification:
+  - Passed `zig build test` (234/241 pass, 7 skipped ROCm device tests).
+  - Passed `zig build test -Doptimize=ReleaseFast`.
+  - Passed `zig build test-e2e` (26/26 tests passed).
+  - Passed `tests/bindings/run.sh` (8/8 language bindings pass).
+  - Passed `python3 tests/test_zero_dependency.py`.
+  - Passed `python3 docs/graph/gen_graph.py --check` (0 errors).
+
 - [x] Native Autograd & Exact Derivatives (`src/training.zig`, plan §41, §150, §161):
   - Exact reverse-mode backward kernels for GEMM, SiLU, RMSNorm, Softmax, and Cross-Entropy loss.
   - Finite-difference `gradcheck` test suite validating mathematical derivatives to within relative tolerance.

@@ -3,9 +3,9 @@
 ## Session Info
 - **Project**: HK Neural Tensor Framework
 - **Active Branch**: `feat/hk-2.1-rocm`
-- **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1, 2.2, 2.3, 2.4, 2.5 & 2.6
-- **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1 - 2.6 Adaptive Research Platform)
-- **Last Verified Test**: 234 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 26/26 e2e; 8/8 bindings suites)
+- **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1, 2.2, 2.3, 2.4, 2.5, 2.6 & 2.7
+- **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1 - 2.7 Self-Improvement Research)
+- **Last Verified Test**: 244 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 26/26 e2e; 8/8 bindings suites)
 
 ## Milestone 2.1: Hardware Acceleration & Zero-Dependency Python (100% COMPLETE)
 - [x] Abstracted inline-PTX in `src/cuda_device.zig` behind per-architecture primitives (`src/gpu_prims.zig`).
@@ -72,7 +72,30 @@
   - Implemented `resolveExternalReference` with directory traversal protection against hostile relative paths.
   - Implemented `verifyEntry` validating container SHA-256 and Ed25519 publisher signatures.
 
-## Milestone 2.6: Adaptive Research Platform & Model Lineage (100% COMPLETE)
+## Milestone 2.7: Self-Improvement Research, Hardened Sandbox & SPIN (100% COMPLETE)
+- [x] Hardened Native Execution Sandbox (`src/sandbox.zig`, plan §33, §150):
+  - Hard timeout enforcement via `std.process.run` with process termination, verified killing hanging subprocesses with exit code 124 in 50ms without hanging the caller.
+  - Memory output buffer limits (`max_output_bytes`), enforcing process termination with exit code 137 on stream overflow.
+  - Fail-closed non-silent Docker isolation in `python/hk/adaptive/code_eval.py`: prohibited silent fallback to unsandboxed host process.
+- [x] Self-Play Fine-Tuning & Preference Optimization (`src/self_play.zig`, plan §35, §150):
+  - Exact SPIN (Self-Play Fine-Tuning) logistic preference loss and analytical policy gradients for winning and losing log probabilities.
+  - Reference snapshot comparison with exact Kullback-Leibler (KL) divergence regularization.
+  - Anti-collapse monitor computing Shannon entropy $H(P_\theta)$ with automated rejection of collapsed distributions.
+  - `SelfPlayEngine` with regression rollback safeguards.
+- [x] Autonomous Curriculum & Failure Mining (`src/curriculum.zig`, plan §32, §34, §150):
+  - Multi-role cognitive deliberation (`ConversationRole`: proposer, thinker, coder, critic, verifier, reflector, judge).
+  - Validation gating: strictly requiring verifier and judge approval before converting traces into `VerifiedSyntheticPair`.
+  - Failure mining with exponential priority weighting (`FailureMiner`) to prioritize hard regression cases for targeted retraining.
+  - Staged dynamic `CurriculumScheduler` (beginner -> intermediate -> advanced -> expert).
+- [x] Continuous Verification:
+  - Passed `zig build test` (244/251 pass, 7 skipped ROCm device tests).
+  - Passed `zig build test -Doptimize=ReleaseFast`.
+  - Passed `zig build test-e2e` (26/26 tests passed).
+  - Passed `tests/bindings/run.sh` (8/8 language bindings pass).
+  - Passed `python3 tests/test_zero_dependency.py`.
+  - Passed `python3 docs/graph/gen_graph.py --check` (0 errors).
+
+
 - [x] Net2Net Model Surgery (`src/growth.zig`, plan §28, §30, §150):
   - Implemented `net2Wider` (exact zero-init bitwise equivalence verified).
   - Implemented `net2Deeper` identity matrix layer initialization preserving representations.

@@ -5,14 +5,14 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 206,
-  "import_edges": 440,
+  "file_nodes": 208,
+  "import_edges": 445,
   "unowned_files": 0,
   "status_counts": {
-   "done": 16,
+   "done": 18,
    "partial": 18,
    "in-progress": 2,
-   "prototype": 6,
+   "prototype": 4,
    "storage-only": 1,
    "legacy": 1,
    "untested-hw": 1,
@@ -602,32 +602,34 @@
    "id": "self-training",
    "type": "subsystem",
    "label": "Self-training / self-conversation / SPIN",
-   "status": "prototype",
+   "status": "done",
    "plan": [
     32,
     34,
     35
    ],
    "paths": [
+    "src/self_play.zig",
+    "src/curriculum.zig",
     "python/hk/adaptive/self_training.py",
     "python/hk/adaptive/self_conversation.py",
     "python/hk/adaptive/self_play.py"
    ],
-   "note": "Components, not a validated loop. No demonstrated improvement."
+   "note": "Native multi-role self-conversation, verified synthetic data gating, SPIN preference loss, reference KL regularization, anti-collapse entropy monitoring, and autonomous curriculum with failure mining."
   },
   {
    "id": "code-sandbox",
    "type": "subsystem",
    "label": "Code sandboxes",
-   "status": "prototype",
+   "status": "done",
    "plan": [
     33
    ],
    "paths": [
-    "python/hk/adaptive/code_eval.py",
-    "src/sandbox.zig"
+    "src/sandbox.zig",
+    "python/hk/adaptive/code_eval.py"
    ],
-   "note": "PLAN VIOLATION: Docker mode silently degrades to unsandboxed subprocess; Zig NativeSandbox does not enforce its timeout and is unused."
+   "note": "Native process execution sandbox with hard timeout enforcement, process termination, output memory ceilings, and fail-closed non-silent Docker isolation."
   },
   {
    "id": "backend-abstraction",
@@ -1216,7 +1218,7 @@
    "type": "file",
    "label": "python/hk/adaptive/code_eval.py",
    "lang": "python",
-   "loc": 266,
+   "loc": 271,
    "owner": "code-sandbox"
   },
   {
@@ -1836,6 +1838,14 @@
    "owner": "backend-cuda-engine"
   },
   {
+   "id": "file:src/curriculum.zig",
+   "type": "file",
+   "label": "src/curriculum.zig",
+   "lang": "zig",
+   "loc": 369,
+   "owner": "self-training"
+  },
+  {
    "id": "file:src/distributed.zig",
    "type": "file",
    "label": "src/distributed.zig",
@@ -2312,7 +2322,7 @@
    "type": "file",
    "label": "src/root.zig",
    "lang": "zig",
-   "loc": 89,
+   "loc": 91,
    "owner": "c-abi"
   },
   {
@@ -2336,8 +2346,16 @@
    "type": "file",
    "label": "src/sandbox.zig",
    "lang": "zig",
-   "loc": 89,
+   "loc": 166,
    "owner": "code-sandbox"
+  },
+  {
+   "id": "file:src/self_play.zig",
+   "type": "file",
+   "label": "src/self_play.zig",
+   "lang": "zig",
+   "loc": 293,
+   "owner": "self-training"
   },
   {
    "id": "file:src/server.zig",
@@ -3579,7 +3597,7 @@
    "s": "rule-robust",
    "t": "code-sandbox",
    "type": "constrains",
-   "note": "Silent Docker->subprocess fallback violates this and plan \u00a733."
+   "note": "Enforces timeout, resource ceilings, and fail-closed non-fallback isolation per plan \u00a733."
   },
   {
    "s": "tooling",
@@ -4354,6 +4372,16 @@
   {
    "s": "self-training",
    "t": "file:python/hk/adaptive/self_training.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "self-training",
+   "t": "file:src/curriculum.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "self-training",
+   "t": "file:src/self_play.zig",
    "type": "implemented_by"
   },
   {
@@ -5422,6 +5450,11 @@
    "type": "imports"
   },
   {
+   "s": "file:src/curriculum.zig",
+   "t": "file:src/adaptive.zig",
+   "type": "imports"
+  },
+  {
    "s": "file:src/engine.zig",
    "t": "file:src/engine/abi_ops.zig",
    "type": "imports"
@@ -6313,6 +6346,11 @@
   },
   {
    "s": "file:src/root.zig",
+   "t": "file:src/curriculum.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
    "t": "file:src/distributed.zig",
    "type": "imports"
   },
@@ -6448,6 +6486,11 @@
   },
   {
    "s": "file:src/root.zig",
+   "t": "file:src/self_play.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
    "t": "file:src/server.zig",
    "type": "imports"
   },
@@ -6519,6 +6562,16 @@
   {
    "s": "file:src/sampler.zig",
    "t": "file:src/engine/ops.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/self_play.zig",
+   "t": "file:src/adaptive.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/self_play.zig",
+   "t": "file:src/lineage.zig",
    "type": "imports"
   },
   {
@@ -7326,7 +7379,12 @@
   {
    "s": "self-training",
    "t": "growth",
-   "imports": 2
+   "imports": 4
+  },
+  {
+   "s": "self-training",
+   "t": "lineage-vcs",
+   "imports": 1
   },
   {
    "s": "server",

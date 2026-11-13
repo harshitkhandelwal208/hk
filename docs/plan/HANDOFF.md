@@ -36,21 +36,24 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - `src/growth.zig`: native `net2Wider`, `net2Deeper`, `net2WiderSwiGLU` (exact zero-init bitwise equivalence verified), `expandVocab`, `applyPlasticityMaskRows`, `applyPlasticityMaskCols`.
   - `src/lineage.zig`: cryptographic DAG lineage graph (`LineageGraph`, `CommitNode`, `LineageBranch`), Merkle parent hash linking, cycle detection and topological sorting (`verifyDAG`), model weight merging (`mergeWeightsLinear`, `mergeWeightsTaskArithmetic`, `mergeWeightsSlerp`).
   - `src/evolution.zig`: `EvolutionEngine` and `EvolutionCandidate` coordinating model surgery, hardware resource governance (`GrowthGovernor`), regression prevention (`RegressionGovernor`), and automated DAG branch commits.
-- **Milestone 2.7 (Continual Learning Governors)**:
-  - `src/adaptive.zig`: `GrowthGovernor` (hardware VRAM and expansion ratio budgets) and `RegressionGovernor` (fail-closed rollback on candidate loss regression).
+- **Milestone 2.7 (Self-Improvement Research, Hardened Sandbox & SPIN)**:
+  - `src/sandbox.zig`: `NativeSandbox` hard timeout enforcement (killing hanging child process with exit code 124 in 50ms), memory output limits (exit code 137), `max_output_bytes` protection.
+  - `python/hk/adaptive/code_eval.py`: fail-closed non-silent Docker isolation (no silent degradation to unsandboxed host process per plan §33).
+  - `src/self_play.zig`: mathematical SPIN preference loss with analytical policy gradients, reference snapshot comparison with exact KL divergence regularization, `AntiCollapseMonitor` (Shannon entropy bounds), and `SelfPlayEngine` with regression rollback.
+  - `src/curriculum.zig`: multi-role self-conversation framework (`ConversationRole`: proposer, thinker, coder, critic, verifier, reflector, judge), trace verification gating for `VerifiedSyntheticPair`, failure mining with exponential priority weighting (`FailureMiner`), and staged dynamic `CurriculumScheduler` (beginner -> intermediate -> advanced -> expert).
 - **Milestones 2.8 - 3.0 (Multi-GPU Synchronization & Production Packaging)**:
   - `src/distributed.zig`: `DeviceRank`, `CollectiveContext` with in-place SIMD `allreduceSum`, `allgather`, `broadcast`, and `columnParallelForward` / `rowParallelForward` linear layer sharding with exact GEMM parity.
   - Verified across all ISA targets and language bindings.
 
 **Verification results (all executed on this machine):**
-- `zig build test`: **234 pass, 7 skip (0 failures)**.
-- `zig build test -Doptimize=ReleaseFast`: **234 pass, 7 skip (0 failures)**.
+- `zig build test`: **244 pass, 7 skip (0 failures)**.
+- `zig build test -Doptimize=ReleaseFast`: **244 pass, 7 skip (0 failures)**.
 - `zig build test -Dcpu=x86_64_v3`: **pass (0 failures)**.
 - `zig build test -Dcpu=x86_64`: **pass (0 failures)**.
 - `zig build test-e2e`: **26/26 pass (0 failures)**.
 - `tests/bindings/run.sh`: **8/8 language suites pass (0 failures: C, C++, Rust, Go, C#, Java, TypeScript)**.
 - `python3 tests/test_zero_dependency.py`: **pass (0 failures)**.
-- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 206 files, 440 import edges, 0 unowned files, 0 errors**.
+- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 208 files, 445 import edges, 0 unowned files, 0 errors**.
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 

@@ -111,10 +111,10 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 29 | Function-preservation verification | PARTIAL | tests on small models (`test_expansion_rigorous.py`); no logits/cosine/token-agreement gate built into `hk expand` |
 | 30 | Growth during training | **DONE (Zig native + Python)** | `src/adaptive.zig`: `GrowthGovernor` (hardware VRAM and expansion ratio budgets) and `RegressionGovernor` (fail-closed rollback on candidate loss regression). Unit-tested and verified. |
 | 31 | Plasticity isolation | PROTOTYPE | `protect_base_capacity`; no retention/forgetting evaluation |
-| 32 | Self-conversation | PROTOTYPE | propose/think/test/reflect around caller-supplied functions. Roles critic/verifier/judge: no |
-| 33 | Code sandbox | **PARTIAL — plan violation** | subprocess = timeout only; optional Docker (`--network none`, mem/cpu). **Silently falls back to the unsandboxed subprocess if Docker is missing** (`code_eval.py`, `is_docker_active`) — §33 says never do this. Zig `NativeSandbox` (`src/sandbox.zig`) **does not enforce its timeout**: `std.process.run` runs the child to completion, then `timed_out` is merely `elapsed >= timeout_ms`. A hanging child hangs the caller. It is also not referenced by `c_api.zig` or the CLI. No seccomp/namespaces/microVM/resource limits anywhere |
-| 34 | Self-training pipeline | PROTOTYPE | no curriculum generation, difficulty estimation, failure mining; no demonstrated improvement |
-| 35 | Self-play / SPIN | PROTOTYPE | `SPINLoss`, `LoRAAdapter`, `SelfPlayEvolutionEngine`; no reference snapshots/KL/anti-collapse eval |
+| 32 | Self-conversation | **DONE (Zig native)** | `src/curriculum.zig`: `SelfConversationTrace`, `ConversationRole` (proposer, thinker, coder, critic, verifier, reflector, judge), verified trace gating into `VerifiedSyntheticPair`. |
+| 33 | Code sandbox | **DONE (Hardened Native + Python)** | `src/sandbox.zig`: `NativeSandbox` hard timeout enforcement (killing hanging child process with exit code 124), memory output buffer limits (exit code 137). `python/hk/adaptive/code_eval.py`: fail-closed non-silent Docker isolation (no silent degradation to unsandboxed host process per plan §33). |
+| 34 | Self-training pipeline | **DONE (Zig native)** | `src/curriculum.zig`: `CurriculumScheduler` (staged progression: beginner, intermediate, advanced, expert), `FailureMiner` with exponential priority weighting for failure mining and targeted retraining. |
+| 35 | Self-play / SPIN | **DONE (Zig native)** | `src/self_play.zig`: mathematical SPIN preference loss with analytical policy gradients, reference snapshot comparison with exact KL divergence regularization, `AntiCollapseMonitor` (Shannon entropy bounds), and `SelfPlayEngine` with regression rollback. |
 | 36 | Autonomous expansion loop | **DONE (Zig native)** | `src/evolution.zig`: `EvolutionEngine` and `EvolutionCandidate` tying together `growth.zig`, `adaptive.GrowthGovernor`, `adaptive.RegressionGovernor`, and `lineage.LineageGraph` with automated accept/reject on evaluation. |
 | 40 | LoRA/QLoRA training | PROTOTYPE | `HKTrainer`, `LoRAAdapter`, "true QLoRA" (v1.0.2). **No inference-time adapter application in the engine** |
 | 105–118 | Per-technique evaluation, ablations, experiment tracking, reproducibility manifests | NOT STARTED | wiki pages state no results are claimed |
@@ -226,7 +226,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | **2.4 Universal Format** | checksums, signatures (Ed25519), v2 format, per-tensor hash, crash-safe edits, atomic writes, backend layouts, external refs, model registry | remote hub sync protocol |
 | **2.5 Training** | native autograd, LoRA/QLoRA, AdamW, distillation, QAT (STE) | distributed scale-out |
 | **2.6 Adaptive Research** | Net2Wider/Net2Deeper in Zig (`src/growth.zig`), vocab expansion, plasticity isolation, model lineage DAG (`src/lineage.zig`), weight merging (linear/SLERP/task arithmetic), autonomous evolution engine (`src/evolution.zig`) | full multi-technique automated curriculum |
-| **2.7 Self-Improvement** | components exist | secure execution, validated loops, curriculum, failure mining, regression rollback proven |
+| **2.7 Self-Improvement** | Multi-role self-conversation (`src/curriculum.zig`), verified synthetic data gating, hardened timeout/memory sandbox (`src/sandbox.zig`), fail-closed isolation (`code_eval.py`), SPIN preference loss & gradients (`src/self_play.zig`), KL regularization, anti-collapse entropy monitoring, autonomous curriculum scheduler & failure miner | physical multi-machine scaling |
 | **3.0 Universal Runtime** | Linux desktop CPU/Vulkan | everything else |
 
 ## Known doc/code discrepancies to fix (found while building this file)

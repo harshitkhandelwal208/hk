@@ -49,6 +49,8 @@ pub const registry = @import("registry.zig");
 pub const training = @import("training.zig");
 pub const lineage = @import("lineage.zig");
 pub const evolution = @import("evolution.zig");
+pub const self_play = @import("self_play.zig");
+pub const curriculum = @import("curriculum.zig");
 
 // Re-export key structs
 pub const FileHeader = format.FileHeader;

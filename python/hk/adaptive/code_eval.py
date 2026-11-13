@@ -181,6 +181,11 @@ except Exception as _e:
                 )
 
         if proc is None:
+            if self.use_docker:
+                raise RuntimeError(
+                    "Docker sandbox isolation was requested (use_docker=True), but Docker is unavailable "
+                    "or container execution failed. Silent fallback to unsandboxed execution is prohibited (plan §33)."
+                )
             with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as tmp:
                 tmp.write(full_script)
                 tmp_path = tmp.name

@@ -151,9 +151,16 @@
   - Vision Transformer (ViT / CLIP) 2D patch extraction and linear embedding with spatial positional embeddings.
   - Vision-to-Language projection bridge (`projectVisionToText`).
   - 1D Temporal Convolution subsampling front-end for Audio models (Whisper `applyAudio1DConvSubsampling`).
+- [x] Native State-Space Models & Mamba Architecture Core (`src/models/ssm.zig`, plan §47, §48, §150):
+  - Depthwise causal 1D convolution buffer (`Conv1DState`) with SiLU activation.
+  - Zero-Order Hold (ZOH) continuous-to-discrete discretization ($\bar{A} = \exp(\Delta A), \bar{B} = \Delta B$).
+  - Selective State-Space (S6) recurrent decode step (`SsmState.step`) with skip connection $D$.
+  - Parallel associative selective scan (`selectiveScan`) for prefill sequence processing.
+  - Gated multiplicative output combination (`combineGatedOutput` for $y \cdot \text{silu}(z)$).
+  - Exact mathematical parity verified between sequential decode and selective scan.
 - [x] Universal Architecture Configuration & Registry (`src/engine/config.zig`, `src/models/registry.zig`):
-  - Extended `Arch` enum: `.moe`, `.clip_vision`, `.whisper_audio`.
-  - Added canonical descriptors for Mixtral, DeepSeek-MoE, CLIP, and Whisper.
+  - Extended `Arch` enum: `.moe`, `.clip_vision`, `.whisper_audio`, `.mamba`.
+  - Added canonical descriptors for Mixtral, DeepSeek-MoE, CLIP, Whisper, and Mamba.
   - Added `expert_count` and `experts_per_tok` metadata fields for MoE planning.
 - [x] Multi-Model Execution & Memory Planner (`src/engine/planner.zig`):
   - Updated `planExecution` with accurate MoE weight scaling for routed experts.
@@ -169,14 +176,14 @@
   - Pareto frontier optimization identifying non-dominated architectures balancing parameter capacity, decode throughput, and memory footprint.
   - Hardware-Aware Design queries: finding optimal architecture under VRAM budget (e.g. 6 GB), optimal quantization format, and FFN width saturating memory bandwidth.
 - [x] Continuous Verification:
-  - Passed `zig build test` (257/264 pass, 7 skipped ROCm device tests).
+  - Passed `zig build test` (262/269 pass, 7 skipped ROCm device tests).
   - Passed `zig build test -Doptimize=ReleaseFast`.
   - Passed `zig build test -Dcpu=x86_64_v3`.
   - Passed `zig build test -Dcpu=x86_64`.
   - Passed `zig build test-e2e` (26/26 tests passed).
   - Passed `tests/bindings/run.sh` (8/8 language bindings pass).
   - Passed `python3 tests/test_zero_dependency.py`.
-  - Passed `python3 docs/graph/gen_graph.py --check` (80 curated nodes, 212 files, 451 edges, 0 errors).
+  - Passed `python3 docs/graph/gen_graph.py --check` (80 curated nodes, 213 files, 452 edges, 0 errors).
 
 
 

@@ -17,6 +17,7 @@ pub const Arch = enum {
     moe,
     clip_vision,
     whisper_audio,
+    mamba,
 
     pub fn name(self: Arch) []const u8 {
         return @tagName(self);
@@ -46,6 +47,8 @@ pub const Arch = enum {
             .{ "clip", .clip_vision },
             .{ "vit", .clip_vision },
             .{ "whisper", .whisper_audio },
+            .{ "mamba", .mamba },
+            .{ "mamba2", .mamba },
         };
         for (table) |e| if (std.mem.eql(u8, s, e[0])) return e[1];
         return null;
@@ -260,6 +263,10 @@ pub fn fromMetadata(meta: *const metadata.MetadataMap, vocab_rows: usize, diag: 
         diag.set("architecture '{s}' is not supported by this build (supported: llama, mistral, qwen, qwen2, qwen3, gemma, phi3, deepseek)", .{arch_name});
         return error.UnsupportedArchitecture;
     };
+    if (arch == .mamba or arch == .clip_vision or arch == .whisper_audio) {
+        diag.set("architecture '{s}' is not supported by autoregressive transformer engine", .{arch_name});
+        return error.UnsupportedArchitecture;
+    }
 
     const dim = try needInt(meta, arch_name, "embedding_length", diag);
     const n_heads = try needInt(meta, arch_name, "attention.head_count", diag);
@@ -339,7 +346,7 @@ pub fn fromMetadata(meta: *const metadata.MetadataMap, vocab_rows: usize, diag: 
             }
             break :blk switch (arch) {
                 .llama => .norm,
-                .qwen2, .qwen3, .gemma, .phi3, .moe, .clip_vision, .whisper_audio => .neox,
+                .qwen2, .qwen3, .gemma, .phi3, .moe, .clip_vision, .whisper_audio, .mamba => .neox,
             };
         },
         .rope_scaling = rope_scaling,
@@ -369,5 +376,7 @@ test "Arch.fromName recognizes Gemma, Phi, Mistral, Qwen, DeepSeek" {
     try std.testing.expectEqual(Arch.moe, Arch.fromName("deepseek_moe").?);
     try std.testing.expectEqual(Arch.clip_vision, Arch.fromName("clip").?);
     try std.testing.expectEqual(Arch.whisper_audio, Arch.fromName("whisper").?);
+    try std.testing.expectEqual(Arch.mamba, Arch.fromName("mamba").?);
+    try std.testing.expectEqual(Arch.mamba, Arch.fromName("mamba2").?);
     try std.testing.expect(Arch.fromName("unknown_arch") == null);
 }

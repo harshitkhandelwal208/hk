@@ -47,6 +47,7 @@ pub const distributed = @import("distributed.zig");
 pub const models = @import("models/registry.zig");
 pub const moe = @import("models/moe.zig");
 pub const multimodal = @import("models/multimodal.zig");
+pub const ssm = @import("models/ssm.zig");
 pub const registry = @import("registry.zig");
 pub const training = @import("training.zig");
 pub const lineage = @import("lineage.zig");

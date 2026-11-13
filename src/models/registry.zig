@@ -290,6 +290,25 @@ pub const REGISTRY = [_]ArchitectureDescriptor{
             .eos_id = 50257,
         },
     },
+    // Mamba State-Space Model
+    .{
+        .name = "mamba",
+        .arch = .mamba,
+        .canonical_family = "state_space",
+        .default_attention = .mha,
+        .ffn_activation = .silu,
+        .rope_style = .norm,
+        .default_rope_base = 10000.0,
+        .norm_type = .rmsnorm,
+        .qk_norm = false,
+        .qkv_bias = false,
+        .supports_sliding_window = false,
+        .vocab_info = .{
+            .default_vocab_size = 50280,
+            .bos_id = 0,
+            .eos_id = 0,
+        },
+    },
 };
 
 /// Lookup an architecture descriptor by name or family.
@@ -340,6 +359,9 @@ test "ArchitectureRegistry: find LLaMA, Mistral, Gemma, Qwen, Phi, DeepSeek" {
 
     const whisper_desc = find("whisper").?;
     try std.testing.expectEqual(Arch.whisper_audio, whisper_desc.arch);
+
+    const mamba_desc = find("mamba").?;
+    try std.testing.expectEqual(Arch.mamba, mamba_desc.arch);
 
     try std.testing.expect(find("nonexistent_model") == null);
 }

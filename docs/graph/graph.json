@@ -5,8 +5,8 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 212,
-  "import_edges": 451,
+  "file_nodes": 213,
+  "import_edges": 452,
   "unowned_files": 0,
   "status_counts": {
    "done": 18,
@@ -499,9 +499,10 @@
     "python/hk/constants.py",
     "src/models/registry.zig",
     "src/models/moe.zig",
-    "src/models/multimodal.zig"
+    "src/models/multimodal.zig",
+    "src/models/ssm.zig"
    ],
-   "note": "Native Zig and Python architecture registry covering LLaMA, Mistral, Gemma, Gemma 2, Qwen 2, Qwen 3, Phi 3, DeepSeek, MoE (Mixtral/DeepSeek-MoE), Vision (ViT/CLIP), and Audio (Whisper)."
+   "note": "Native Zig and Python architecture registry covering LLaMA, Mistral, Gemma, Gemma 2, Qwen 2, Qwen 3, Phi 3, DeepSeek, MoE (Mixtral/DeepSeek-MoE), Vision (ViT/CLIP), Audio (Whisper), and State-Space Models (Mamba)."
   },
   {
    "id": "gui",
@@ -1917,7 +1918,7 @@
    "type": "file",
    "label": "src/engine/config.zig",
    "lang": "zig",
-   "loc": 373,
+   "loc": 382,
    "owner": "engine"
   },
   {
@@ -2197,7 +2198,15 @@
    "type": "file",
    "label": "src/models/registry.zig",
    "lang": "zig",
-   "loc": 345,
+   "loc": 367,
+   "owner": "architecture-registry"
+  },
+  {
+   "id": "file:src/models/ssm.zig",
+   "type": "file",
+   "label": "src/models/ssm.zig",
+   "lang": "zig",
+   "loc": 492,
    "owner": "architecture-registry"
   },
   {
@@ -2357,7 +2366,7 @@
    "type": "file",
    "label": "src/root.zig",
    "lang": "zig",
-   "loc": 94,
+   "loc": 95,
    "owner": "c-abi"
   },
   {
@@ -4347,6 +4356,11 @@
   {
    "s": "architecture-registry",
    "t": "file:src/models/registry.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "architecture-registry",
+   "t": "file:src/models/ssm.zig",
    "type": "implemented_by"
   },
   {
@@ -6507,6 +6521,11 @@
   {
    "s": "file:src/root.zig",
    "t": "file:src/models/registry.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/models/ssm.zig",
    "type": "imports"
   },
   {

@@ -86,3 +86,96 @@ pub fn initPlasticityMask(
         }
     }
 }
+
+/// Continual learning regression governor (Plan §30, §85):
+/// Monitors evaluation metrics after model updates or growth.
+/// Enforces fail-closed rollback if performance regresses beyond threshold.
+pub const RegressionGovernor = struct {
+    baseline_loss: f32,
+    max_regression_ratio: f32, // e.g. 1.05 (allows up to 5% regression)
+
+    pub fn init(baseline_loss: f32, max_regression_ratio: f32) RegressionGovernor {
+        return .{
+            .baseline_loss = baseline_loss,
+            .max_regression_ratio = max_regression_ratio,
+        };
+    }
+
+    pub fn shouldRollback(self: RegressionGovernor, candidate_loss: f32) bool {
+        // Fail-closed: non-finite loss immediately triggers rollback
+        if (!std.math.isFinite(candidate_loss)) return true;
+        return candidate_loss > (self.baseline_loss * self.max_regression_ratio);
+    }
+};
+
+test "GrowthGovernor: budget validation and limits" {
+    var reason_buf: [128]u8 = undefined;
+
+    // 1. Valid growth within 2.0x ratio and within 4096 MB
+    const gov = GrowthGovernor.init(4096, 2.0);
+    const res1 = gov.canGrow(1_000_000, 500_000, 4, &reason_buf);
+    try std.testing.expect(res1.approved);
+    try std.testing.expectEqualStrings("Approved", res1.reason);
+
+    // 2. Growth exceeding max_growth_ratio (1.0M + 1.5M = 2.5M, ratio = 2.5x > 2.0x)
+    const res2 = gov.canGrow(1_000_000, 1_500_000, 4, &reason_buf);
+    try std.testing.expect(!res2.approved);
+
+    // 3. Growth exceeding max_vram_mb (10 MB budget, adding 20 MB)
+    const tiny_gov = GrowthGovernor.init(10, 2.0);
+    const res3 = tiny_gov.canGrow(10_000_000, 5_000_000, 4, &reason_buf); // 5M * 4 bytes = 20 MB > 10 MB
+    try std.testing.expect(!res3.approved);
+}
+
+test "RegressionGovernor: rollback on regression detection" {
+    const gov = RegressionGovernor.init(2.0, 1.05); // baseline loss = 2.0, max acceptable = 2.10
+
+    // Small improvement or harmless variation
+    try std.testing.expect(!gov.shouldRollback(1.95));
+    try std.testing.expect(!gov.shouldRollback(2.05));
+
+    // Severe regression triggers rollback
+    try std.testing.expect(gov.shouldRollback(2.25));
+
+    // NaN / Inf triggers fail-closed rollback
+    try std.testing.expect(gov.shouldRollback(std.math.nan(f32)));
+    try std.testing.expect(gov.shouldRollback(std.math.inf(f32)));
+}
+
+test "expandVocabEmbeddings: exact base preservation and initialization" {
+    const allocator = std.testing.allocator;
+    const old_vocab: usize = 3;
+    const new_vocab: usize = 6;
+    const hidden_size: usize = 4;
+
+    const old_embed = try allocator.alloc(f32, old_vocab * hidden_size);
+    defer allocator.free(old_embed);
+    for (0..old_embed.len) |i| old_embed[i] = @as(f32, @floatFromInt(i + 1)) * 0.1;
+
+    const new_embed = try allocator.alloc(f32, new_vocab * hidden_size);
+    defer allocator.free(new_embed);
+
+    expandVocabEmbeddings(old_embed, old_vocab, hidden_size, new_vocab, new_embed, 0.02, 42);
+
+    // Base tokens must be exactly equal
+    for (0..old_embed.len) |i| {
+        try std.testing.expectEqual(old_embed[i], new_embed[i]);
+    }
+
+    // New tokens must be finite and initialized
+    for (old_embed.len..new_embed.len) |i| {
+        try std.testing.expect(std.math.isFinite(new_embed[i]));
+    }
+}
+
+test "initPlasticityMask: protection of base units" {
+    var mask: [8]f32 = undefined;
+    initPlasticityMask(&mask, 8, 4, 0.1);
+
+    for (0..4) |i| {
+        try std.testing.expectApproxEqAbs(@as(f32, 0.1), mask[i], 1e-6);
+    }
+    for (4..8) |i| {
+        try std.testing.expectApproxEqAbs(@as(f32, 1.0), mask[i], 1e-6);
+    }
+}

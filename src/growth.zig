@@ -341,3 +341,247 @@ pub fn applyPlasticityMaskCols(
         }
     }
 }
+
+test "Net2WiderNet: exact function preservation across layer widening" {
+    const allocator = std.testing.allocator;
+    const in_f: usize = 4;
+    const old_out: usize = 4;
+    const new_out: usize = 8;
+    const out_f: usize = 4;
+
+    const w_in_old = try allocator.alloc(f32, old_out * in_f);
+    defer allocator.free(w_in_old);
+    const b_in_old = try allocator.alloc(f32, old_out);
+    defer allocator.free(b_in_old);
+    const w_out_old = try allocator.alloc(f32, out_f * old_out);
+    defer allocator.free(w_out_old);
+
+    for (0..old_out * in_f) |i| w_in_old[i] = @as(f32, @floatFromInt(i + 1)) * 0.1;
+    for (0..old_out) |i| b_in_old[i] = @as(f32, @floatFromInt(i)) * 0.05;
+    for (0..out_f * old_out) |i| w_out_old[i] = @as(f32, @floatFromInt(i % 5 + 1)) * 0.2;
+
+    const x = [_]f32{ 0.5, -0.3, 1.2, 0.8 };
+
+    // Compute original output: h = ReLU(W1*x + b1), y = W2*h
+    var h_orig: [4]f32 = undefined;
+    for (0..old_out) |i| {
+        var sum: f32 = b_in_old[i];
+        for (0..in_f) |j| sum += w_in_old[i * in_f + j] * x[j];
+        h_orig[i] = if (sum > 0.0) sum else 0.0;
+    }
+    var y_orig: [4]f32 = undefined;
+    for (0..out_f) |i| {
+        var sum: f32 = 0.0;
+        for (0..old_out) |j| sum += w_out_old[i * old_out + j] * h_orig[j];
+        y_orig[i] = sum;
+    }
+
+    // Allocate widened layers
+    const w_in_new = try allocator.alloc(f32, new_out * in_f);
+    defer allocator.free(w_in_new);
+    const b_in_new = try allocator.alloc(f32, new_out);
+    defer allocator.free(b_in_new);
+    const w_out_new = try allocator.alloc(f32, out_f * new_out);
+    defer allocator.free(w_out_new);
+
+    try net2Wider(
+        w_in_old,
+        b_in_old,
+        w_in_new,
+        b_in_new,
+        w_out_old,
+        w_out_new,
+        old_out,
+        new_out,
+        in_f,
+        out_f,
+        0.0, // noise_std = 0 for exact mathematical parity check
+        42,
+    );
+
+    // Compute widened output: h' = ReLU(W1'*x + b1'), y' = W2'*h'
+    var h_wider: [8]f32 = undefined;
+    for (0..new_out) |i| {
+        var sum: f32 = b_in_new[i];
+        for (0..in_f) |j| sum += w_in_new[i * in_f + j] * x[j];
+        h_wider[i] = if (sum > 0.0) sum else 0.0;
+    }
+    var y_wider: [4]f32 = undefined;
+    for (0..out_f) |i| {
+        var sum: f32 = 0.0;
+        for (0..new_out) |j| sum += w_out_new[i * new_out + j] * h_wider[j];
+        y_wider[i] = sum;
+    }
+
+    for (0..out_f) |i| {
+        try std.testing.expectApproxEqAbs(y_orig[i], y_wider[i], 1e-4);
+    }
+}
+
+test "Net2DeeperNet: identity insertion preserves exact representations" {
+    var weights: [16]f32 = undefined;
+    var bias: [4]f32 = undefined;
+    net2Deeper(&weights, &bias, 4);
+
+    const x = [_]f32{ 1.5, -2.0, 0.75, 4.2 };
+    var y: [4]f32 = undefined;
+    for (0..4) |i| {
+        var sum: f32 = bias[i];
+        for (0..4) |j| sum += weights[i * 4 + j] * x[j];
+        y[i] = sum;
+    }
+
+    for (0..4) |i| {
+        try std.testing.expectEqual(x[i], y[i]);
+    }
+}
+
+test "Net2WiderSwiGLU: zero-init guarantees exact bitwise function preservation" {
+    const allocator = std.testing.allocator;
+    const in_f: usize = 4;
+    const old_inter: usize = 4;
+    const new_inter: usize = 8;
+    const out_f: usize = 4;
+
+    const w_gate_old = try allocator.alloc(f32, old_inter * in_f);
+    defer allocator.free(w_gate_old);
+    const w_up_old = try allocator.alloc(f32, old_inter * in_f);
+    defer allocator.free(w_up_old);
+    const w_down_old = try allocator.alloc(f32, out_f * old_inter);
+    defer allocator.free(w_down_old);
+
+    for (0..old_inter * in_f) |i| {
+        w_gate_old[i] = @as(f32, @floatFromInt(i + 1)) * 0.1;
+        w_up_old[i] = @as(f32, @floatFromInt(i + 2)) * 0.15;
+    }
+    for (0..out_f * old_inter) |i| {
+        w_down_old[i] = @as(f32, @floatFromInt(i + 3)) * 0.05;
+    }
+
+    const x = [_]f32{ 0.7, -0.4, 1.1, 0.2 };
+
+    // Reference forward pass
+    const silu = struct {
+        fn call(v: f32) f32 {
+            return v / (1.0 + @exp(-v));
+        }
+    }.call;
+
+    var mlp_orig: [4]f32 = undefined;
+    for (0..old_inter) |j| {
+        var g_sum: f32 = 0.0;
+        var u_sum: f32 = 0.0;
+        for (0..in_f) |k| {
+            g_sum += w_gate_old[j * in_f + k] * x[k];
+            u_sum += w_up_old[j * in_f + k] * x[k];
+        }
+        mlp_orig[j] = silu(g_sum) * u_sum;
+    }
+    var y_orig: [4]f32 = undefined;
+    for (0..out_f) |r| {
+        var s: f32 = 0.0;
+        for (0..old_inter) |j| s += w_down_old[r * old_inter + j] * mlp_orig[j];
+        y_orig[r] = s;
+    }
+
+    // Widened SwiGLU
+    const w_gate_new = try allocator.alloc(f32, new_inter * in_f);
+    defer allocator.free(w_gate_new);
+    const w_up_new = try allocator.alloc(f32, new_inter * in_f);
+    defer allocator.free(w_up_new);
+    const w_down_new = try allocator.alloc(f32, out_f * new_inter);
+    defer allocator.free(w_down_new);
+
+    try net2WiderSwiGLU(
+        w_gate_old,
+        null,
+        w_up_old,
+        null,
+        w_down_old,
+        null,
+        w_gate_new,
+        null,
+        w_up_new,
+        null,
+        w_down_new,
+        null,
+        old_inter,
+        new_inter,
+        in_f,
+        out_f,
+        true, // zero_init
+        0.0,
+        1234,
+    );
+
+    var mlp_wider: [8]f32 = undefined;
+    for (0..new_inter) |j| {
+        var g_sum: f32 = 0.0;
+        var u_sum: f32 = 0.0;
+        for (0..in_f) |k| {
+            g_sum += w_gate_new[j * in_f + k] * x[k];
+            u_sum += w_up_new[j * in_f + k] * x[k];
+        }
+        mlp_wider[j] = silu(g_sum) * u_sum;
+    }
+    var y_wider: [4]f32 = undefined;
+    for (0..out_f) |r| {
+        var s: f32 = 0.0;
+        for (0..new_inter) |j| s += w_down_new[r * new_inter + j] * mlp_wider[j];
+        y_wider[r] = s;
+    }
+
+    // Exact equality: zero-init down_proj ensures zero contribution from new channels
+    for (0..out_f) |r| {
+        try std.testing.expectEqual(y_orig[r], y_wider[r]);
+    }
+}
+
+test "expandVocab and plasticity masks: base protection against catastrophic forgetting" {
+    const allocator = std.testing.allocator;
+    const old_vocab: usize = 4;
+    const new_vocab: usize = 8;
+    const dim: usize = 4;
+
+    const embed_old = try allocator.alloc(f32, old_vocab * dim);
+    defer allocator.free(embed_old);
+    for (0..old_vocab * dim) |i| embed_old[i] = @as(f32, @floatFromInt(i + 1)) * 0.1;
+
+    const embed_new = try allocator.alloc(f32, new_vocab * dim);
+    defer allocator.free(embed_new);
+
+    try expandVocab(embed_old, embed_new, null, null, old_vocab, new_vocab, dim, 99);
+
+    // Old vocab embeddings must remain bitwise identical
+    for (0..old_vocab * dim) |i| {
+        try std.testing.expectEqual(embed_old[i], embed_new[i]);
+    }
+
+    // Plasticity masking on rows
+    const grad_rows = try allocator.alloc(f32, new_vocab * dim);
+    defer allocator.free(grad_rows);
+    @memset(grad_rows, 1.0);
+
+    applyPlasticityMaskRows(grad_rows, old_vocab, dim);
+    for (0..old_vocab * dim) |i| {
+        try std.testing.expectEqual(@as(f32, 0.0), grad_rows[i]);
+    }
+    for (old_vocab * dim..new_vocab * dim) |i| {
+        try std.testing.expectEqual(@as(f32, 1.0), grad_rows[i]);
+    }
+
+    // Plasticity masking on columns
+    const grad_cols = try allocator.alloc(f32, dim * new_vocab);
+    defer allocator.free(grad_cols);
+    @memset(grad_cols, 2.0);
+
+    applyPlasticityMaskCols(grad_cols, dim, old_vocab, new_vocab);
+    for (0..dim) |r| {
+        for (0..old_vocab) |c| {
+            try std.testing.expectEqual(@as(f32, 0.0), grad_cols[r * new_vocab + c]);
+        }
+        for (old_vocab..new_vocab) |c| {
+            try std.testing.expectEqual(@as(f32, 2.0), grad_cols[r * new_vocab + c]);
+        }
+    }
+}

@@ -150,3 +150,230 @@ pub const KvCache = struct {
         self.allocated = @min(self.allocated, need);
     }
 };
+
+/// Fixed-size block/page tokens for paged attention and prefix caching (plan §80, §150 milestone 2.3).
+pub const block_tokens = 32;
+
+/// A physical page holding keys and values for `block_tokens` across all layers.
+pub const Page = struct {
+    k: []f16,
+    v: []f16,
+    ref_count: u32 = 0,
+};
+
+/// Logical-to-physical block table for one sequence.
+pub const BlockTable = struct {
+    allocator: std.mem.Allocator,
+    page_ids: std.ArrayList(u32) = .empty,
+
+    pub fn init(allocator: std.mem.Allocator) BlockTable {
+        return .{ .allocator = allocator, .page_ids = .empty };
+    }
+
+    pub fn deinit(self: *BlockTable) void {
+        self.page_ids.deinit(self.allocator);
+    }
+
+    pub fn numPages(self: *const BlockTable) usize {
+        return self.page_ids.items.len;
+    }
+};
+
+/// Global or engine-level Paged KV Cache Manager (plan §80).
+pub const PagedKvManager = struct {
+    allocator: std.mem.Allocator,
+    cfg: config_mod.Config,
+    hd_pad: usize,
+    page_elems: usize,
+    max_pages: usize,
+    pages: []Page,
+    free_list: std.ArrayList(u32) = .empty,
+    allocated_pages: usize = 0,
+
+    pub fn init(allocator: std.mem.Allocator, cfg: config_mod.Config, max_pages: usize) !PagedKvManager {
+        const hd_pad = (cfg.head_dim + 15) / 16 * 16;
+        const page_elems = cfg.n_layers * cfg.n_kv_heads * block_tokens * hd_pad;
+        const pages = try allocator.alloc(Page, max_pages);
+        errdefer allocator.free(pages);
+        @memset(pages, .{ .k = &.{}, .v = &.{}, .ref_count = 0 });
+
+        var free_list: std.ArrayList(u32) = .empty;
+        try free_list.ensureTotalCapacity(allocator, max_pages);
+        for (0..max_pages) |i| {
+            try free_list.append(allocator, @intCast(max_pages - 1 - i));
+        }
+
+        return .{
+            .allocator = allocator,
+            .cfg = cfg,
+            .hd_pad = hd_pad,
+            .page_elems = page_elems,
+            .max_pages = max_pages,
+            .pages = pages,
+            .free_list = free_list,
+        };
+    }
+
+    pub fn deinit(self: *PagedKvManager) void {
+        for (self.pages) |*p| {
+            if (p.k.len != 0) self.allocator.free(p.k);
+            if (p.v.len != 0) self.allocator.free(p.v);
+        }
+        self.allocator.free(self.pages);
+        self.free_list.deinit(self.allocator);
+    }
+
+    /// Allocates a new physical page from the pool.
+    pub fn allocPage(self: *PagedKvManager) !u32 {
+        const id = self.free_list.pop() orelse return error.OutOfMemory;
+        var p = &self.pages[id];
+        if (p.k.len == 0) {
+            p.k = try self.allocator.alloc(f16, self.page_elems);
+            p.v = self.allocator.alloc(f16, self.page_elems) catch |e| {
+                self.allocator.free(p.k);
+                p.k = &.{};
+                self.free_list.append(self.allocator, id) catch {};
+                return e;
+            };
+        }
+        p.ref_count = 1;
+        self.allocated_pages += 1;
+        return id;
+    }
+
+    /// Increments reference count for prefix caching / shared prompt fork.
+    pub fn retain(self: *PagedKvManager, page_id: u32) void {
+        std.debug.assert(page_id < self.max_pages);
+        self.pages[page_id].ref_count += 1;
+    }
+
+    /// Releases a page; when reference count reaches zero it returns to the free pool.
+    pub fn release(self: *PagedKvManager, page_id: u32) void {
+        std.debug.assert(page_id < self.max_pages);
+        var p = &self.pages[page_id];
+        if (p.ref_count > 1) {
+            p.ref_count -= 1;
+            return;
+        }
+        p.ref_count = 0;
+        self.free_list.append(self.allocator, page_id) catch {};
+        self.allocated_pages -|= 1;
+    }
+
+    /// Forks a sequence's block table, sharing all prefix pages (copy-on-write).
+    pub fn forkSequence(self: *PagedKvManager, src: *const BlockTable, dst: *BlockTable) !void {
+        try dst.page_ids.resize(dst.allocator, src.page_ids.items.len);
+        for (src.page_ids.items, 0..) |pid, i| {
+            self.retain(pid);
+            dst.page_ids.items[i] = pid;
+        }
+    }
+
+    /// Frees all pages belonging to a sequence.
+    pub fn freeSequence(self: *PagedKvManager, bt: *BlockTable) void {
+        for (bt.page_ids.items) |pid| {
+            self.release(pid);
+        }
+        bt.page_ids.clearRetainingCapacity();
+    }
+
+    /// Writes key and value vectors into a sequence's paged cache.
+    pub fn write(self: *PagedKvManager, bt: *BlockTable, layer: usize, head: usize, pos: usize, k: []const f32, v: []const f32) !void {
+        const block_idx = pos / block_tokens;
+        const block_offset = pos % block_tokens;
+        while (bt.page_ids.items.len <= block_idx) {
+            const pid = try self.allocPage();
+            try bt.page_ids.append(bt.allocator, pid);
+        }
+        const pid = bt.page_ids.items[block_idx];
+        const page = &self.pages[pid];
+        const hd = self.cfg.head_dim;
+        const hdp = self.hd_pad;
+        const base = (layer * self.cfg.n_kv_heads + head) * block_tokens * hdp + block_offset * hdp;
+        for (0..hd) |d| {
+            page.k[base + d] = @floatCast(k[d]);
+            page.v[base + d] = @floatCast(v[d]);
+        }
+    }
+
+    /// Reads key and value vectors from a sequence's paged cache.
+    pub fn read(self: *const PagedKvManager, bt: *const BlockTable, layer: usize, head: usize, pos: usize, k_out: []f32, v_out: []f32) bool {
+        const block_idx = pos / block_tokens;
+        const block_offset = pos % block_tokens;
+        if (block_idx >= bt.page_ids.items.len) return false;
+        const pid = bt.page_ids.items[block_idx];
+        const page = &self.pages[pid];
+        if (page.k.len == 0 or page.ref_count == 0) return false;
+        const hd = self.cfg.head_dim;
+        const hdp = self.hd_pad;
+        const base = (layer * self.cfg.n_kv_heads + head) * block_tokens * hdp + block_offset * hdp;
+        for (0..hd) |d| {
+            k_out[d] = @floatCast(page.k[base + d]);
+            v_out[d] = @floatCast(page.v[base + d]);
+        }
+        return true;
+    }
+
+    /// Total memory currently allocated for paged KV storage in bytes.
+    pub fn residentBytes(self: *const PagedKvManager) usize {
+        return self.allocated_pages * self.page_elems * 2 * @sizeOf(f16);
+    }
+};
+
+test "PagedKvManager allocation, prefix sharing, and release" {
+    const allocator = std.testing.allocator;
+    const cfg = config_mod.Config{
+        .arch = .llama,
+        .n_layers = 2,
+        .dim = 64,
+        .ffn_dim = 128,
+        .n_heads = 4,
+        .n_kv_heads = 2,
+        .head_dim = 16,
+        .vocab = 100,
+        .ctx_train = 2048,
+        .rms_eps = 1e-5,
+        .rope_base = 10000.0,
+        .rope_dim = 16,
+        .rope_style = .neox,
+        .rope_scaling = .{},
+        .ffn_act = .silu,
+        .qk_norm = false,
+        .qkv_bias = false,
+    };
+
+    var mgr = try PagedKvManager.init(allocator, cfg, 16);
+    defer mgr.deinit();
+
+    var seq1 = BlockTable.init(allocator);
+    defer seq1.deinit();
+
+    const k_in = [_]f32{ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0 };
+    const v_in = [_]f32{ 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5, 11.5, 12.5, 13.5, 14.5, 15.5 };
+
+    try mgr.write(&seq1, 0, 0, 0, &k_in, &v_in);
+    try std.testing.expectEqual(@as(usize, 1), seq1.numPages());
+    try std.testing.expectEqual(@as(usize, 1), mgr.allocated_pages);
+
+    var k_out: [16]f32 = undefined;
+    var v_out: [16]f32 = undefined;
+    try std.testing.expect(mgr.read(&seq1, 0, 0, 0, &k_out, &v_out));
+    try std.testing.expectEqualSlices(f32, &k_in, &k_out);
+    try std.testing.expectEqualSlices(f32, &v_in, &v_out);
+
+    // Fork sequence (prefix sharing)
+    var seq2 = BlockTable.init(allocator);
+    defer seq2.deinit();
+    try mgr.forkSequence(&seq1, &seq2);
+    try std.testing.expectEqual(@as(usize, 1), seq2.numPages());
+    try std.testing.expectEqual(@as(u32, 2), mgr.pages[seq1.page_ids.items[0]].ref_count);
+
+    // Free seq1; page stays alive for seq2
+    mgr.freeSequence(&seq1);
+    try std.testing.expectEqual(@as(u32, 1), mgr.pages[seq2.page_ids.items[0]].ref_count);
+    try std.testing.expectEqual(@as(usize, 1), mgr.allocated_pages);
+
+    // Free seq2; page returns to pool
+    mgr.freeSequence(&seq2);
+    try std.testing.expectEqual(@as(usize, 0), mgr.allocated_pages);
+}

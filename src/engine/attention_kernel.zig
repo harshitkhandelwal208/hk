@@ -137,10 +137,14 @@ fn processRun(job: *const Job, a: usize, b: usize, g: usize, hs: usize, slice: u
         while (c < rows) : (c += chunk_rows) {
             const R = @min(chunk_rows, rows - c);
             var live = false;
-            for (c..c + R) |r| live = live or npos[r] > p0;
+            for (c..c + R) |r| {
+                const sw = cfg.sliding_window;
+                const past_start = if (sw) |w| (npos[r] <= w or p0 + tile > npos[r] - w) else true;
+                live = live or (npos[r] > p0 and past_start);
+            }
             if (!live) continue;
             switch (R) {
-                inline 1, 2, 3, 4 => |RR| tileChunk(RR, hdp, qs[c * hdp ..].ptr, acc[c * hdp ..].ptr, m[c..].ptr, l[c..].ptr, npos[c..].ptr, p0, kt, vt),
+                inline 1, 2, 3, 4 => |RR| tileChunk(RR, hdp, qs[c * hdp ..].ptr, acc[c * hdp ..].ptr, m[c..].ptr, l[c..].ptr, npos[c..].ptr, p0, kt, vt, cfg.sliding_window),
                 else => unreachable,
             }
         }
@@ -179,6 +183,7 @@ inline fn tileChunk(
     p0: usize,
     kt: [*]const f16,
     vt: [*]const f16,
+    sliding_window: ?usize,
 ) void {
     // Value rows past the longest row of the chunk may hold anything, so never read them.
     var max_np: usize = 0;
@@ -204,7 +209,7 @@ inline fn tileChunk(
         };
     }
 
-    // Online softmax per row. Positions at or past the row's length are masked out.
+    // Online softmax per row. Positions at or past the row's length (or before sliding window) are masked out.
     const iota: @Vector(V, i32) = comptime blk: {
         var t: [V]i32 = undefined;
         for (0..V) |i| t[i] = @intCast(i);
@@ -212,11 +217,15 @@ inline fn tileChunk(
     };
     inline for (0..R) |r| {
         const valid: i32 = @intCast(@min(npos[r] -| p0, tile));
+        const min_valid: i32 = if (sliding_window) |sw| blk: {
+            const start = if (npos[r] > sw) npos[r] - sw else 0;
+            break :blk @intCast(@min(@max(0, @as(i64, @intCast(start)) - @as(i64, @intCast(p0))), tile));
+        } else 0;
         var sv: [NT]Vf = undefined;
         var tmax: Vf = @splat(neg_inf);
         inline for (0..NT) |v| {
             const idx = iota + @as(@Vector(V, i32), @splat(@as(i32, @intCast(v * V))));
-            const ok = idx < @as(@Vector(V, i32), @splat(valid));
+            const ok = (idx < @as(@Vector(V, i32), @splat(valid))) & (idx >= @as(@Vector(V, i32), @splat(min_valid)));
             sv[v] = @select(f32, ok, @as(Vf, s[r][v * V ..][0..V].*), @as(Vf, @splat(neg_inf)));
             tmax = @max(tmax, sv[v]);
         }

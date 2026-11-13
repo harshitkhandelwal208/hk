@@ -313,7 +313,10 @@ pub const Cpu = struct {
                 .{ .mat = l.w_up, .y = self.up },
             }, self.acts[0..n], l.w_down.data);
             self.lap("ffn_in", &t0);
-            kernels.get().swiglu(self.gate[0 .. n * cfg.ffn_dim], self.up[0 .. n * cfg.ffn_dim]);
+            switch (cfg.ffn_act) {
+                .silu => kernels.get().swiglu(self.gate[0 .. n * cfg.ffn_dim], self.up[0 .. n * cfg.ffn_dim]),
+                .gelu_tanh => ops.geglu(self.gate[0 .. n * cfg.ffn_dim], self.up[0 .. n * cfg.ffn_dim]),
+            }
             self.lap("act", &t0);
 
             self.initActs(self.gate, cfg.ffn_dim, n);

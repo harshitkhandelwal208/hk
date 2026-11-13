@@ -66,6 +66,21 @@ pub inline fn silu(x: f32) f32 {
     return x / (1.0 + @exp(-x));
 }
 
+/// GeLU with tanh approximation: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+pub inline fn gelu(x: f32) f32 {
+    const k: f32 = 0.7978845608028654; // sqrt(2 / pi)
+    const x3 = x * x * x;
+    return 0.5 * x * (1.0 + std.math.tanh(k * (x + 0.044715 * x3)));
+}
+
+/// gate = gelu(gate) * up (GeGLU activation for Gemma / modern architectures)
+pub fn geglu(gate: []f32, up: []const f32) void {
+    std.debug.assert(gate.len == up.len);
+    for (gate, 0..) |*g, i| {
+        g.* = gelu(g.*) * up[i];
+    }
+}
+
 /// gate = silu(gate) * up
 pub fn swiglu(gate: []f32, up: []const f32) void {
     std.debug.assert(gate.len == up.len);

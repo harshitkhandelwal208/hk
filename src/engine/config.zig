@@ -12,6 +12,8 @@ pub const Arch = enum {
     llama,
     qwen2,
     qwen3,
+    gemma,
+    phi3,
 
     pub fn name(self: Arch) []const u8 {
         return @tagName(self);
@@ -23,8 +25,17 @@ pub const Arch = enum {
             .{ "llama", .llama },
             // These families are llama compatible in the GGUF convention.
             .{ "mistral", .llama },
+            .{ "qwen", .qwen2 },
             .{ "qwen2", .qwen2 },
             .{ "qwen3", .qwen3 },
+            .{ "gemma", .gemma },
+            .{ "gemma2", .gemma },
+            .{ "phi", .phi3 },
+            .{ "phi2", .phi3 },
+            .{ "phi3", .phi3 },
+            .{ "deepseek", .llama },
+            .{ "deepseek2", .llama },
+            .{ "starcoder2", .llama },
         };
         for (table) |e| if (std.mem.eql(u8, s, e[0])) return e[1];
         return null;
@@ -83,6 +94,8 @@ pub const Config = struct {
     qk_norm: bool,
     /// Qwen2 style bias on the q, k and v projections.
     qkv_bias: bool,
+    /// Sliding window attention size (null = full causal attention).
+    sliding_window: ?usize = null,
 
     pub fn qDim(self: Config) usize {
         return self.n_heads * self.head_dim;
@@ -230,7 +243,7 @@ pub fn fromMetadata(meta: *const metadata.MetadataMap, vocab_rows: usize, diag: 
         return error.MissingKey;
     };
     const arch = Arch.fromName(arch_name) orelse {
-        diag.set("architecture '{s}' is not supported by this build (supported: llama, mistral, qwen2, qwen3)", .{arch_name});
+        diag.set("architecture '{s}' is not supported by this build (supported: llama, mistral, qwen, qwen2, qwen3, gemma, phi3, deepseek)", .{arch_name});
         return error.UnsupportedArchitecture;
     };
 
@@ -268,15 +281,11 @@ pub fn fromMetadata(meta: *const metadata.MetadataMap, vocab_rows: usize, diag: 
         return error.InvalidValue;
     }
 
-    // Sliding window attention changes which positions are visible. Running such a model with
-    // full attention is wrong once the context passes the window, so refuse it instead.
     var swk: [96]u8 = undefined;
-    if (meta.getInt(key(&swk, arch_name, "attention.sliding_window"))) |w| {
-        if (w > 0) {
-            diag.set("sliding window attention ({d}) is not supported yet", .{w});
-            return error.InvalidValue;
-        }
-    }
+    const sliding_window: ?usize = if (meta.getInt(key(&swk, arch_name, "attention.sliding_window"))) |w|
+        if (w > 0) @as(usize, @intCast(w)) else null
+    else
+        null;
 
     const rope_scaling = try parseRopeScaling(meta, arch_name, optInt(meta, arch_name, "context_length") orelse 2048, rope_dim, diag);
 
@@ -304,12 +313,29 @@ pub fn fromMetadata(meta: *const metadata.MetadataMap, vocab_rows: usize, diag: 
             }
             break :blk switch (arch) {
                 .llama => .norm,
-                .qwen2, .qwen3 => .neox,
+                .qwen2, .qwen3, .gemma, .phi3 => .neox,
             };
         },
         .rope_scaling = rope_scaling,
-        .ffn_act = .silu,
-        .qk_norm = arch == .qwen3,
-        .qkv_bias = arch == .qwen2,
+        .ffn_act = if (arch == .gemma) .gelu_tanh else .silu,
+        .qk_norm = (arch == .qwen3 or arch == .gemma),
+        .qkv_bias = (arch == .qwen2 or arch == .phi3),
+        .sliding_window = sliding_window,
     };
+}
+
+test "Arch.fromName recognizes Gemma, Phi, Mistral, Qwen, DeepSeek" {
+    try std.testing.expectEqual(Arch.llama, Arch.fromName("llama").?);
+    try std.testing.expectEqual(Arch.llama, Arch.fromName("mistral").?);
+    try std.testing.expectEqual(Arch.qwen2, Arch.fromName("qwen").?);
+    try std.testing.expectEqual(Arch.qwen2, Arch.fromName("qwen2").?);
+    try std.testing.expectEqual(Arch.qwen3, Arch.fromName("qwen3").?);
+    try std.testing.expectEqual(Arch.gemma, Arch.fromName("gemma").?);
+    try std.testing.expectEqual(Arch.gemma, Arch.fromName("gemma2").?);
+    try std.testing.expectEqual(Arch.phi3, Arch.fromName("phi").?);
+    try std.testing.expectEqual(Arch.phi3, Arch.fromName("phi2").?);
+    try std.testing.expectEqual(Arch.phi3, Arch.fromName("phi3").?);
+    try std.testing.expectEqual(Arch.llama, Arch.fromName("deepseek").?);
+    try std.testing.expectEqual(Arch.llama, Arch.fromName("deepseek2").?);
+    try std.testing.expect(Arch.fromName("unknown_arch") == null);
 }

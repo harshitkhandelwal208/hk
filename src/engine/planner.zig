@@ -135,10 +135,11 @@ pub fn planExecution(cfg: Config, max_tokens: usize) PlannerError!ExecutionPlan 
         ffn_gate_bytes + ffn_up_bytes + ffn_down_bytes,
     );
 
-    // Weight estimate (approximate for planning)
+    // Weight estimate (approximate for planning, accounting for routed MoE experts)
+    const num_experts = cfg.expert_count orelse 1;
     const qkv_weights = (cfg.dim * cfg.qDim() + 2 * cfg.dim * cfg.kvDim()) * @sizeOf(f16);
     const attn_out_weights = (cfg.qDim() * cfg.dim) * @sizeOf(f16);
-    const mlp_weights = (2 * cfg.dim * cfg.ffn_dim + cfg.ffn_dim * cfg.dim) * @sizeOf(f16);
+    const mlp_weights = num_experts * (2 * cfg.dim * cfg.ffn_dim + cfg.ffn_dim * cfg.dim) * @sizeOf(f16);
     const layer_weights = qkv_weights + attn_out_weights + mlp_weights;
     const total_weights_bytes = cfg.n_layers * layer_weights + (cfg.vocab * cfg.dim * @sizeOf(f16));
 
@@ -210,4 +211,42 @@ test "validateVocabulary: bounds checking" {
 
     const oob_tokens = [_]u32{ 0, 32064 };
     try std.testing.expectError(error.TokenIndexOutOfBounds, validateVocabulary(32064, &oob_tokens));
+}
+
+test "planExecution: dense vs MoE memory footprints" {
+    const dense_cfg = Config{
+        .arch = .llama,
+        .n_layers = 4,
+        .dim = 256,
+        .ffn_dim = 512,
+        .n_heads = 8,
+        .n_kv_heads = 4,
+        .head_dim = 32,
+        .vocab = 1000,
+        .ctx_train = 2048,
+        .rms_eps = 1e-5,
+        .rope_base = 10000.0,
+        .rope_dim = 32,
+        .rope_style = .norm,
+        .rope_scaling = .{},
+        .ffn_act = .silu,
+        .qk_norm = false,
+        .qkv_bias = false,
+    };
+
+    const dense_plan = try planExecution(dense_cfg, 512);
+    try std.testing.expectEqual(AttentionType.gqa, dense_plan.attention.attention_type);
+    try std.testing.expect(dense_plan.total_weights_bytes > 0);
+    try std.testing.expect(dense_plan.peak_memory_bytes > dense_plan.total_weights_bytes);
+
+    var moe_cfg = dense_cfg;
+    moe_cfg.arch = .moe;
+    moe_cfg.expert_count = 8;
+    moe_cfg.experts_per_tok = 2;
+
+    const moe_plan = try planExecution(moe_cfg, 512);
+    // MoE weights should be strictly larger due to 8 experts in MLP
+    try std.testing.expect(moe_plan.total_weights_bytes > dense_plan.total_weights_bytes);
+    // KV cache footprint is identical because attention dimension and layers are the same
+    try std.testing.expectEqual(dense_plan.kv_cache_total_bytes, moe_plan.kv_cache_total_bytes);
 }

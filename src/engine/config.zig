@@ -14,6 +14,9 @@ pub const Arch = enum {
     qwen3,
     gemma,
     phi3,
+    moe,
+    clip_vision,
+    whisper_audio,
 
     pub fn name(self: Arch) []const u8 {
         return @tagName(self);
@@ -36,6 +39,13 @@ pub const Arch = enum {
             .{ "deepseek", .llama },
             .{ "deepseek2", .llama },
             .{ "starcoder2", .llama },
+            .{ "moe", .moe },
+            .{ "mixtral", .moe },
+            .{ "deepseek_moe", .moe },
+            .{ "qwen2_moe", .moe },
+            .{ "clip", .clip_vision },
+            .{ "vit", .clip_vision },
+            .{ "whisper", .whisper_audio },
         };
         for (table) |e| if (std.mem.eql(u8, s, e[0])) return e[1];
         return null;
@@ -96,6 +106,10 @@ pub const Config = struct {
     qkv_bias: bool,
     /// Sliding window attention size (null = full causal attention).
     sliding_window: ?usize = null,
+    /// Total number of routed experts (for MoE architectures, null for dense).
+    expert_count: ?usize = null,
+    /// Number of active experts routed per token (for MoE architectures).
+    experts_per_tok: ?usize = null,
 
     pub fn qDim(self: Config) usize {
         return self.n_heads * self.head_dim;
@@ -287,6 +301,18 @@ pub fn fromMetadata(meta: *const metadata.MetadataMap, vocab_rows: usize, diag: 
     else
         null;
 
+    var eck: [96]u8 = undefined;
+    const expert_count: ?usize = if (meta.getInt(key(&eck, arch_name, "expert_count"))) |e|
+        if (e > 0) @as(usize, @intCast(e)) else null
+    else
+        null;
+
+    var euk: [96]u8 = undefined;
+    const experts_per_tok: ?usize = if (meta.getInt(key(&euk, arch_name, "expert_used_count"))) |u|
+        if (u > 0) @as(usize, @intCast(u)) else null
+    else
+        null;
+
     const rope_scaling = try parseRopeScaling(meta, arch_name, optInt(meta, arch_name, "context_length") orelse 2048, rope_dim, diag);
 
     return .{
@@ -313,7 +339,7 @@ pub fn fromMetadata(meta: *const metadata.MetadataMap, vocab_rows: usize, diag: 
             }
             break :blk switch (arch) {
                 .llama => .norm,
-                .qwen2, .qwen3, .gemma, .phi3 => .neox,
+                .qwen2, .qwen3, .gemma, .phi3, .moe, .clip_vision, .whisper_audio => .neox,
             };
         },
         .rope_scaling = rope_scaling,
@@ -321,6 +347,8 @@ pub fn fromMetadata(meta: *const metadata.MetadataMap, vocab_rows: usize, diag: 
         .qk_norm = (arch == .qwen3 or arch == .gemma),
         .qkv_bias = (arch == .qwen2 or arch == .phi3),
         .sliding_window = sliding_window,
+        .expert_count = expert_count,
+        .experts_per_tok = experts_per_tok,
     };
 }
 
@@ -337,5 +365,9 @@ test "Arch.fromName recognizes Gemma, Phi, Mistral, Qwen, DeepSeek" {
     try std.testing.expectEqual(Arch.phi3, Arch.fromName("phi3").?);
     try std.testing.expectEqual(Arch.llama, Arch.fromName("deepseek").?);
     try std.testing.expectEqual(Arch.llama, Arch.fromName("deepseek2").?);
+    try std.testing.expectEqual(Arch.moe, Arch.fromName("mixtral").?);
+    try std.testing.expectEqual(Arch.moe, Arch.fromName("deepseek_moe").?);
+    try std.testing.expectEqual(Arch.clip_vision, Arch.fromName("clip").?);
+    try std.testing.expectEqual(Arch.whisper_audio, Arch.fromName("whisper").?);
     try std.testing.expect(Arch.fromName("unknown_arch") == null);
 }

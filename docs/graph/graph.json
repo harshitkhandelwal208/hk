@@ -5,8 +5,8 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 208,
-  "import_edges": 445,
+  "file_nodes": 210,
+  "import_edges": 447,
   "unowned_files": 0,
   "status_counts": {
    "done": 18,
@@ -497,9 +497,11 @@
    "paths": [
     "python/hk/models.py",
     "python/hk/constants.py",
-    "src/models/registry.zig"
+    "src/models/registry.zig",
+    "src/models/moe.zig",
+    "src/models/multimodal.zig"
    ],
-   "note": "Native Zig and Python architecture registry covering LLaMA, Mistral, Gemma, Gemma 2, Qwen 2, Qwen 3, Phi 3, DeepSeek with MQA/GQA and RoPE verification."
+   "note": "Native Zig and Python architecture registry covering LLaMA, Mistral, Gemma, Gemma 2, Qwen 2, Qwen 3, Phi 3, DeepSeek, MoE (Mixtral/DeepSeek-MoE), Vision (ViT/CLIP), and Audio (Whisper)."
   },
   {
    "id": "gui",
@@ -1898,7 +1900,7 @@
    "type": "file",
    "label": "src/engine/config.zig",
    "lang": "zig",
-   "loc": 341,
+   "loc": 373,
    "owner": "engine"
   },
   {
@@ -1954,7 +1956,7 @@
    "type": "file",
    "label": "src/engine/planner.zig",
    "lang": "zig",
-   "loc": 213,
+   "loc": 252,
    "owner": "memory-planner"
   },
   {
@@ -2158,11 +2160,27 @@
    "owner": "format-core"
   },
   {
+   "id": "file:src/models/moe.zig",
+   "type": "file",
+   "label": "src/models/moe.zig",
+   "lang": "zig",
+   "loc": 222,
+   "owner": "architecture-registry"
+  },
+  {
+   "id": "file:src/models/multimodal.zig",
+   "type": "file",
+   "label": "src/models/multimodal.zig",
+   "lang": "zig",
+   "loc": 293,
+   "owner": "architecture-registry"
+  },
+  {
    "id": "file:src/models/registry.zig",
    "type": "file",
    "label": "src/models/registry.zig",
    "lang": "zig",
-   "loc": 257,
+   "loc": 345,
    "owner": "architecture-registry"
   },
   {
@@ -2322,7 +2340,7 @@
    "type": "file",
    "label": "src/root.zig",
    "lang": "zig",
-   "loc": 91,
+   "loc": 93,
    "owner": "c-abi"
   },
   {
@@ -4292,6 +4310,16 @@
   {
    "s": "architecture-registry",
    "t": "file:python/hk/constants.py",
+   "type": "implemented_by"
+  },
+  {
+   "s": "architecture-registry",
+   "t": "file:src/models/moe.zig",
+   "type": "implemented_by"
+  },
+  {
+   "s": "architecture-registry",
+   "t": "file:src/models/multimodal.zig",
    "type": "implemented_by"
   },
   {
@@ -6417,6 +6445,16 @@
   {
    "s": "file:src/root.zig",
    "t": "file:src/metadata.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/models/moe.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/models/multimodal.zig",
    "type": "imports"
   },
   {

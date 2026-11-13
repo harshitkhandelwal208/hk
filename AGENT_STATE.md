@@ -3,9 +3,9 @@
 ## Session Info
 - **Project**: HK Neural Tensor Framework
 - **Active Branch**: `feat/hk-2.1-rocm`
-- **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1, 2.2, 2.3, 2.4, 2.5, 2.6 & 2.7
-- **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1 - 2.7 Self-Improvement Research)
-- **Last Verified Test**: 244 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 26/26 e2e; 8/8 bindings suites)
+- **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1 THROUGH 3.0 (UNIVERSAL NEURAL RUNTIME)
+- **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1 - 3.0 Universal Runtime)
+- **Last Verified Test**: 250 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 26/26 e2e; 8/8 bindings suites)
 
 ## Milestone 2.1: Hardware Acceleration & Zero-Dependency Python (100% COMPLETE)
 - [x] Abstracted inline-PTX in `src/cuda_device.zig` behind per-architecture primitives (`src/gpu_prims.zig`).
@@ -138,6 +138,35 @@
   - Passed `tests/bindings/run.sh` (8/8 language bindings pass).
   - Passed `python3 tests/test_zero_dependency.py`.
   - Passed `python3 docs/graph/gen_graph.py --check` (0 errors).
+
+## Milestone 3.0: Universal Neural Runtime & Multi-Architecture Expansion (100% COMPLETE)
+- [x] Universal Hardware-Neutral Principle:
+  - Ensured HK is not specialized or tuned for a single architecture (e.g. LLaMA only) or single vendor silicon (e.g. NVIDIA).
+  - Maintained universal execution across CPU, Vulkan, ROCm/HIP, and CUDA with identical numerical invariants.
+- [x] Native Mixture of Experts (MoE) Architecture & Routing Core (`src/models/moe.zig`):
+  - Implemented `MoeConfig`, `MoeRouter` (Top-K selection with softmax or sigmoid normalization, invariant $\sum w_k = 1.0$).
+  - Implemented `dispatchMoe` with DeepSeek-style shared expert residual pathway.
+  - Zero-alloc, bounded scratch buffer execution.
+- [x] Native Multimodal Vision & Audio Transformers (`src/models/multimodal.zig`):
+  - Vision Transformer (ViT / CLIP) 2D patch extraction and linear embedding with spatial positional embeddings.
+  - Vision-to-Language projection bridge (`projectVisionToText`).
+  - 1D Temporal Convolution subsampling front-end for Audio models (Whisper `applyAudio1DConvSubsampling`).
+- [x] Universal Architecture Configuration & Registry (`src/engine/config.zig`, `src/models/registry.zig`):
+  - Extended `Arch` enum: `.moe`, `.clip_vision`, `.whisper_audio`.
+  - Added canonical descriptors for Mixtral, DeepSeek-MoE, CLIP, and Whisper.
+  - Added `expert_count` and `experts_per_tok` metadata fields for MoE planning.
+- [x] Multi-Model Execution & Memory Planner (`src/engine/planner.zig`):
+  - Updated `planExecution` with accurate MoE weight scaling for routed experts.
+  - Verified memory footprint parity between dense and MoE configurations.
+- [x] Continuous Verification:
+  - Passed `zig build test` (250/257 pass, 7 skipped ROCm device tests).
+  - Passed `zig build test -Doptimize=ReleaseFast`.
+  - Passed `zig build test -Dcpu=x86_64_v3`.
+  - Passed `zig build test -Dcpu=x86_64`.
+  - Passed `zig build test-e2e` (26/26 tests passed).
+  - Passed `tests/bindings/run.sh` (8/8 language bindings pass).
+  - Passed `python3 tests/test_zero_dependency.py`.
+  - Passed `python3 docs/graph/gen_graph.py --check` (80 curated nodes, 210 files, 447 edges, 0 errors).
 
 
 

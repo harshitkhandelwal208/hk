@@ -213,6 +213,83 @@ pub const REGISTRY = [_]ArchitectureDescriptor{
             .eos_id = 1,
         },
     },
+    // Mixtral MoE family
+    .{
+        .name = "mixtral",
+        .arch = .moe,
+        .canonical_family = "moe",
+        .default_attention = .gqa,
+        .ffn_activation = .silu,
+        .rope_style = .norm,
+        .default_rope_base = 1000000.0,
+        .norm_type = .rmsnorm,
+        .qk_norm = false,
+        .qkv_bias = false,
+        .supports_sliding_window = true,
+        .default_sliding_window = 4096,
+        .vocab_info = .{
+            .default_vocab_size = 32000,
+            .bos_id = 1,
+            .eos_id = 2,
+        },
+    },
+    // DeepSeek MoE family
+    .{
+        .name = "deepseek_moe",
+        .arch = .moe,
+        .canonical_family = "moe",
+        .default_attention = .gqa,
+        .ffn_activation = .silu,
+        .rope_style = .neox,
+        .default_rope_base = 10000.0,
+        .norm_type = .rmsnorm,
+        .qk_norm = false,
+        .qkv_bias = false,
+        .supports_sliding_window = false,
+        .vocab_info = .{
+            .default_vocab_size = 102400,
+            .bos_id = 0,
+            .eos_id = 1,
+        },
+    },
+    // Vision Transformer / CLIP
+    .{
+        .name = "clip",
+        .arch = .clip_vision,
+        .canonical_family = "vision",
+        .default_attention = .mha,
+        .ffn_activation = .gelu_tanh,
+        .rope_style = .neox,
+        .default_rope_base = 10000.0,
+        .norm_type = .layernorm,
+        .qk_norm = false,
+        .qkv_bias = true,
+        .supports_sliding_window = false,
+        .vocab_info = .{
+            .default_vocab_size = 49408,
+            .bos_id = 49406,
+            .eos_id = 49407,
+        },
+    },
+    // Whisper Audio Transformer
+    .{
+        .name = "whisper",
+        .arch = .whisper_audio,
+        .canonical_family = "audio",
+        .default_attention = .mha,
+        .ffn_activation = .gelu_tanh,
+        .rope_style = .neox,
+        .default_rope_base = 10000.0,
+        .norm_type = .layernorm,
+        .qk_norm = false,
+        .qkv_bias = true,
+        .supports_sliding_window = false,
+        .vocab_info = .{
+            .default_vocab_size = 51865,
+            .bos_id = 50258,
+            .eos_id = 50257,
+        },
+    },
 };
 
 /// Lookup an architecture descriptor by name or family.
@@ -252,6 +329,17 @@ test "ArchitectureRegistry: find LLaMA, Mistral, Gemma, Qwen, Phi, DeepSeek" {
 
     const phi3_desc = find("phi3").?;
     try std.testing.expectEqual(Arch.phi3, phi3_desc.arch);
+
+    const mixtral_desc = find("mixtral").?;
+    try std.testing.expectEqual(Arch.moe, mixtral_desc.arch);
+    try std.testing.expect(mixtral_desc.supports_sliding_window);
+
+    const clip_desc = find("clip").?;
+    try std.testing.expectEqual(Arch.clip_vision, clip_desc.arch);
+    try std.testing.expectEqual(NormalizationType.layernorm, clip_desc.norm_type);
+
+    const whisper_desc = find("whisper").?;
+    try std.testing.expectEqual(Arch.whisper_audio, whisper_desc.arch);
 
     try std.testing.expect(find("nonexistent_model") == null);
 }

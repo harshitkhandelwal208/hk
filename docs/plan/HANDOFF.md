@@ -41,19 +41,24 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - `python/hk/adaptive/code_eval.py`: fail-closed non-silent Docker isolation (no silent degradation to unsandboxed host process per plan §33).
   - `src/self_play.zig`: mathematical SPIN preference loss with analytical policy gradients, reference snapshot comparison with exact KL divergence regularization, `AntiCollapseMonitor` (Shannon entropy bounds), and `SelfPlayEngine` with regression rollback.
   - `src/curriculum.zig`: multi-role self-conversation framework (`ConversationRole`: proposer, thinker, coder, critic, verifier, reflector, judge), trace verification gating for `VerifiedSyntheticPair`, failure mining with exponential priority weighting (`FailureMiner`), and staged dynamic `CurriculumScheduler` (beginner -> intermediate -> advanced -> expert).
-- **Milestones 2.8 - 3.0 (Multi-GPU Synchronization & Production Packaging)**:
+- **Milestone 3.0 (Universal Neural Runtime & Multi-Architecture Expansion)**:
+  - `src/models/moe.zig`: Native hardware-neutral Mixture of Experts core with `MoeConfig`, `MoeRouter` (Top-K selection with softmax or sigmoid normalization, invariant $\sum w_k = 1.0$), and `dispatchMoe` (with DeepSeek-style shared expert residual pathway). Verified with unit tests.
+  - `src/models/multimodal.zig`: Native Vision Transformer (ViT / CLIP) 2D patch extraction, spatial position embedding addition, vision-to-language projector (`projectVisionToText`), and Audio 1D temporal convolution subsampler (`applyAudio1DConvSubsampling` for Whisper front-end). Verified with unit tests.
+  - `src/engine/config.zig`: Extended `Arch` enum with `.moe`, `.clip_vision`, `.whisper_audio`; updated `fromName` mapping to recognize `mixtral`, `deepseek_moe`, `qwen2_moe`, `clip`, `vit`, `whisper`; added `expert_count` and `experts_per_tok` metadata fields.
+  - `src/engine/planner.zig`: Updated `planExecution` to account for routed MoE expert counts in MLP weight estimation; verified with unit tests.
+  - `src/models/registry.zig`: Added canonical architecture descriptors for `mixtral` (MoE), `deepseek_moe`, `clip` (Vision), and `whisper` (Audio), parameterized with RoPE styles, normalization types, and vocabulary metadata.
   - `src/distributed.zig`: `DeviceRank`, `CollectiveContext` with in-place SIMD `allreduceSum`, `allgather`, `broadcast`, and `columnParallelForward` / `rowParallelForward` linear layer sharding with exact GEMM parity.
-  - Verified across all ISA targets and language bindings.
+  - Universal hardware-neutral invariant: HK is not specialized for any single architecture (e.g. LLaMA only) or vendor silicon (e.g. NVIDIA only); it executes universally across CPU, Vulkan, CUDA, and ROCm/HIP.
 
 **Verification results (all executed on this machine):**
-- `zig build test`: **244 pass, 7 skip (0 failures)**.
-- `zig build test -Doptimize=ReleaseFast`: **244 pass, 7 skip (0 failures)**.
+- `zig build test`: **250 pass, 7 skip (0 failures)**.
+- `zig build test -Doptimize=ReleaseFast`: **250 pass, 7 skip (0 failures)**.
 - `zig build test -Dcpu=x86_64_v3`: **pass (0 failures)**.
 - `zig build test -Dcpu=x86_64`: **pass (0 failures)**.
 - `zig build test-e2e`: **26/26 pass (0 failures)**.
 - `tests/bindings/run.sh`: **8/8 language suites pass (0 failures: C, C++, Rust, Go, C#, Java, TypeScript)**.
 - `python3 tests/test_zero_dependency.py`: **pass (0 failures)**.
-- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 208 files, 445 import edges, 0 unowned files, 0 errors**.
+- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 210 files, 447 import edges, 0 unowned files, 0 errors**.
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 

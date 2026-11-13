@@ -19,11 +19,11 @@ user-facing claims; if this file and the code disagree, **the code wins** — fi
 | **UNTESTED-HW** | Compiles/cross-compiles; has never run on the target hardware |
 | **NOT STARTED** | No code found (grep'd) |
 
-## Baseline measurements (2026-10-06, this machine: Ryzen 7 7445HS, RTX 3050 6GB Laptop, Linux 7.2, Zig 0.16.0)
+## Baseline measurements (2026-11-13, this machine: Ryzen 7 7445HS, RTX 3050 6GB Laptop, Linux 7.2, Zig 0.16.0)
 
-- `zig build test`: **148/148** in Debug, ReleaseFast, `-Dcpu=x86_64_v3` and `-Dcpu=x86_64` (2026-10-20); `test-e2e` 24/24; `tests/bindings/run.sh` 8 suites, 0 failed; `pytest tests` 97 passed, 3 skipped (no `openai`, `jax`, `tkinter`) using a scratch venv with CPU torch.
-  The `hk-cuda-tests` (7) pass; **not checked** whether they exercised the real GPU or skipped.
-- Counts: ~158 Zig `test` blocks, ~100 Python `def test_`. The Python suite was run on 2026-10-20 (see above) in a scratch venv; the system Python has no `numpy`/`torch`.
+- `zig build test`: **257 passed, 7 skipped** in Debug, ReleaseFast, `-Dcpu=x86_64_v3` and `-Dcpu=x86_64` (2026-11-13); `test-e2e` **26/26**; `tests/bindings/run.sh` 8 suites, 0 failed; `python3 tests/test_zero_dependency.py` passed with 0 dependencies.
+  The `hk-cuda-tests` (7) pass; 7 ROCm device tests skip gracefully on non-AMD silicon.
+- Counts: ~264 Zig `test` blocks across 211 files and 80 curated nodes.
 - Performance (from `benchmarks/results.md`, CPU, 6 threads, 2026-10-05): prefill 91–240 % of llama.cpp (faster on 8/10 models), decode 92–100 %, private memory 5–9× lower. Vulkan GPU: ~25–40 % of llama.cpp prefill, 65–80 % decode, one NVIDIA card only.
 
 ## Two kernel stacks — read before touching any kernel

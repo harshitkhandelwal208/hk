@@ -5,7 +5,7 @@
 - **Active Branch**: `feat/hk-2.1-rocm`
 - **Status**: ACTIVE — 100% COMPLETE FOR MILESTONES 2.1, 2.2, & 2.3
 - **Target Plan**: `docs/plan/MASTER_PLAN.md` (Milestones 2.1, 2.2, 2.3 Server Runtime)
-- **Last Verified Test**: 223 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 24/24 e2e; 8/8 bindings suites)
+- **Last Verified Test**: 226 passed, 7 skipped (ReleaseFast, Debug, x86_64_v3, x86_64; 24/24 e2e; 8/8 bindings suites)
 
 ## Milestone 2.1: Hardware Acceleration & Zero-Dependency Python (100% COMPLETE)
 - [x] Abstracted inline-PTX in `src/cuda_device.zig` behind per-architecture primitives (`src/gpu_prims.zig`).
@@ -44,8 +44,13 @@
 - [x] GPU FlashAttention Compute Shaders:
   - Implemented fused QK dot product, online softmax with running max/sum, and cross-subgroup shared memory value reduction (`src/vk/shaders/flash_attention.comp` and `shaders/flash_attention.comp`).
   - Compiled SPIR-V binary (`src/vk/spv/flash_attention.spv`) and integrated into `shaders/build.sh`.
+- [x] Speculative Decoding Engine (`src/engine/speculative.zig`, plan §51):
+  - Implemented `SpeculativeVerifier` using exact Leviathan et al. rejection sampling and residual distribution resampling.
+  - Implemented `DynamicDraftScheduler` adapting draft count based on empirical acceptance rate EMA.
+  - Supported execution topologies: `same_device`, `cpu_draft_gpu_target`, `npu_draft_gpu_target`, `small_model_large_model`.
+  - Zero-heap allocation in verification loops with bounded preallocated buffers.
 - [x] Continuous Verification:
-  - Passed `zig build test` (223/230 pass, 7 skipped ROCm device tests).
+  - Passed `zig build test` (226/233 pass, 7 skipped ROCm device tests).
   - Passed `zig build test -Doptimize=ReleaseFast`.
   - Passed `zig build test-e2e`.
   - Passed `python3 tests/test_zero_dependency.py`.

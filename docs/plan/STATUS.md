@@ -147,7 +147,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 48 | GQA | DONE | everything else (sliding window, MLA, linear attn, SSM, hybrid): NOT STARTED |
 | 49 | MoE | NOT STARTED (runtime) | Python mapper has `pack/unpack_moe_experts` only |
 | 50 | Long context | DONE | `src/engine/kv.zig` and `src/engine/kv_cache.zig`: `PagedKvManager`, `PagedBlockPool`, `PagedKVCache` with ref-counted 32/16-token pages, `BlockTable`, CoW sequence forking, chunked prefill, and sliding-window attention. Masking in `attention_kernel.zig` and GPU FlashAttention shader in `src/vk/shaders/flash_attention.comp`. |
-| 51 | Speculative decoding | NOT STARTED | |
+| 51 | Speculative decoding | DONE | `src/engine/speculative.zig`: `SpeculativeVerifier` (exact Leviathan et al. rejection sampling, residual resampling), `DynamicDraftScheduler` (EMA-based dynamic draft length adjustment), multi-device execution modes (`same_device`, `cpu_draft_gpu_target`, `npu_draft_gpu_target`, `small_model_large_model`), bounded scratch buffers. |
 | 52 | Sampling | PARTIAL | greedy, temperature, top-k, top-p, min-p, repeat/frequency/presence penalties, logit bias, seeded; **missing** typical, mirostat, custom processors, GPU sampling |
 | 53 | Grammar / JSON schema / tool-call parsing | NOT STARTED | |
 | 54–55 | Vision / audio / video, multimodal format | NOT STARTED | loader refuses with the architecture name |

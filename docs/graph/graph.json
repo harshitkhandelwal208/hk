@@ -5,18 +5,18 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 201,
-  "import_edges": 429,
+  "file_nodes": 202,
+  "import_edges": 430,
   "unowned_files": 0,
   "status_counts": {
    "done": 12,
-   "partial": 18,
+   "partial": 19,
    "in-progress": 2,
    "prototype": 7,
    "storage-only": 1,
    "legacy": 1,
    "untested-hw": 1,
-   "not-started": 18
+   "not-started": 17
   }
  },
  "nodes": [
@@ -835,15 +835,17 @@
   },
   {
    "id": "speculative-grammar",
-   "type": "planned",
+   "type": "subsystem",
    "label": "Speculative decoding + grammar/structured output",
-   "status": "not-started",
+   "status": "partial",
    "plan": [
     51,
     53
    ],
-   "paths": [],
-   "note": ""
+   "paths": [
+    "src/engine/speculative.zig"
+   ],
+   "note": "Exact speculative rejection sampling (Leviathan et al.) with dynamic draft length."
   },
   {
    "id": "sparse-execution",
@@ -1845,7 +1847,7 @@
    "type": "file",
    "label": "src/engine.zig",
    "lang": "zig",
-   "loc": 21,
+   "loc": 25,
    "owner": "engine"
   },
   {
@@ -1943,6 +1945,14 @@
    "lang": "zig",
    "loc": 92,
    "owner": "engine"
+  },
+  {
+   "id": "file:src/engine/speculative.zig",
+   "type": "file",
+   "label": "src/engine/speculative.zig",
+   "lang": "zig",
+   "loc": 356,
+   "owner": "speculative-grammar"
   },
   {
    "id": "file:src/engine/weights.zig",
@@ -4371,6 +4381,11 @@
    "type": "implemented_by"
   },
   {
+   "s": "speculative-grammar",
+   "t": "file:src/engine/speculative.zig",
+   "type": "implemented_by"
+  },
+  {
    "s": "sparse-execution",
    "t": "file:shaders/mm_bsr.comp",
    "type": "implemented_by"
@@ -5388,6 +5403,11 @@
   {
    "s": "file:src/engine.zig",
    "t": "file:src/engine/session.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/engine.zig",
+   "t": "file:src/engine/speculative.zig",
    "type": "imports"
   },
   {
@@ -7016,6 +7036,11 @@
    "s": "engine",
    "t": "quant-formats",
    "imports": 4
+  },
+  {
+   "s": "engine",
+   "t": "speculative-grammar",
+   "imports": 1
   },
   {
    "s": "format-core",

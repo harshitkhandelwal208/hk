@@ -6,6 +6,7 @@ pub const matmul = @import("engine/matmul.zig");
 pub const model = @import("engine/model.zig");
 pub const kv = @import("engine/kv.zig");
 pub const kv_cache = @import("engine/kv_cache.zig");
+pub const speculative = @import("engine/speculative.zig");
 pub const session = @import("engine/session.zig");
 pub const planner = @import("engine/planner.zig");
 
@@ -19,3 +20,6 @@ pub const KvCache = kv.KvCache;
 pub const Item = kv.Item;
 pub const PagedKVCache = kv_cache.PagedKVCache;
 pub const PagedBlockPool = kv_cache.PagedBlockPool;
+pub const SpeculativeVerifier = speculative.SpeculativeVerifier;
+pub const SpeculativeConfig = speculative.SpeculativeConfig;
+pub const DynamicDraftScheduler = speculative.DynamicDraftScheduler;

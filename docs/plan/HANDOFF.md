@@ -19,10 +19,11 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
 - **Milestone 2.2 (Memory Planner & Architecture Expansion)**:
   - `src/backend/select.zig`: memory-aware placement planner (`PlacementPolicy`, `MemoryBreakdown`, `canFit`, `layerTarget`, `describeBreakdown`, chunked prefill).
   - Architecture expansion: Gemma, Gemma2, Phi, Phi2, Phi3, DeepSeek, DeepSeek2, Starcoder2; GeGLU and GELU activation dispatch (`src/engine/config.zig`, `src/engine/cpu_backend.zig`, `src/engine/ops.zig`).
-- **Milestone 2.3 (Paged KV Cache & Attention Optimization)**:
+- **Milestone 2.3 (Paged KV Cache, Attention Optimization & Speculative Decoding)**:
   - `src/engine/kv_cache.zig` and `src/engine/kv.zig`: `PagedBlockPool`, `PagedKVCache`, and `PagedKvManager` with reference-counted pages, `BlockTable`, copy-on-write sequence forking (`fork()`) for prefix sharing, sliding window start computation (`activeWindowStart()`), and chunked prefill (`appendChunk()`).
   - `src/engine/attention_kernel.zig` & `src/engine/config.zig`: sliding-window attention (SWA) masking across context windows $[npos - W, npos]$, tile skipping.
   - `src/vk/shaders/flash_attention.comp`: Vulkan compute shader with fused QK dot product, online softmax with running max/sum, and cross-subgroup shared memory value reduction, compiled to SPIR-V in `src/vk/spv/flash_attention.spv`.
+  - `src/engine/speculative.zig`: `SpeculativeVerifier` (exact Leviathan et al. acceptance theorem, residual distribution resampling), `DynamicDraftScheduler` (EMA-based dynamic draft length adjustment), multi-device execution topologies (`same_device`, `cpu_draft_gpu_target`, `npu_draft_gpu_target`, `small_model_large_model`), bounded scratch buffers.
 - **Milestone 2.4 (Signed Manifests & Cryptographic Verification)**:
   - `src/integrity.zig`: `SignedManifest`, `signManifest`, `verifyPublisher`, `verifyContainerWithManifest`, and `verifyFileWithManifest` using Ed25519, timestamp validation, and fail-closed tampering detection.
 - **Milestone 2.5 (2:4 Structured Sparsity & Block-Sparse GEMM)**:
@@ -37,14 +38,14 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
   - Verified across all ISA targets and language bindings.
 
 **Verification results (all executed on this machine):**
-- `zig build test`: **223 pass, 7 skip (0 failures)**.
-- `zig build test -Doptimize=ReleaseFast`: **223 pass, 7 skip (0 failures)**.
+- `zig build test`: **226 pass, 7 skip (0 failures)**.
+- `zig build test -Doptimize=ReleaseFast`: **226 pass, 7 skip (0 failures)**.
 - `zig build test -Dcpu=x86_64_v3`: **pass (0 failures)**.
 - `zig build test -Dcpu=x86_64`: **pass (0 failures)**.
 - `zig build test-e2e`: **24/24 pass (0 failures)**.
 - `tests/bindings/run.sh`: **8/8 language suites pass (0 failures: C, C++, Rust, Go, C#, Java, TypeScript)**.
 - `python3 tests/test_zero_dependency.py`: **pass (0 failures)**.
-- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 201 files, 429 import edges, 0 unowned files, 0 errors**.
+- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 202 files, 430 import edges, 0 unowned files, 0 errors**.
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 

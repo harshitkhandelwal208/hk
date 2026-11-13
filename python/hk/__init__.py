@@ -141,10 +141,28 @@ _EXPORTS = {
     "SelfTrainingPipeline": ("adaptive", "SelfTrainingPipeline"),
     "AutoModelForCausalLM": ("modeling", "AutoModel"),
     "AutoModelForSequenceClassification": ("modeling", "AutoModel"),
+    "Tensor": ("tensor", "Tensor"),
+    "tensor": ("tensor", "tensor"),
+    "zeros": ("tensor", "zeros"),
+    "ones": ("tensor", "ones"),
+    "from_buffer": ("tensor", "from_buffer"),
+    "no_grad": ("tensor", "no_grad"),
+    "gradcheck": ("tensor", "gradcheck"),
+    "float32": ("tensor", "float32"),
+    "float16": ("tensor", "float16"),
+    "bfloat16": ("tensor", "bfloat16"),
+    "float64": ("tensor", "float64"),
+    "int8": ("tensor", "int8"),
+    "int16": ("tensor", "int16"),
+    "int32": ("tensor", "int32"),
+    "int64": ("tensor", "int64"),
+    "uint8": ("tensor", "uint8"),
+    "bool_": ("tensor", "bool_"),
 }
 
 # Submodules reachable as `hk.<name>`.
 _SUBMODULES = {
+    "tensor",
     "torch",
     "native",
     "tokenizer",

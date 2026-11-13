@@ -8,7 +8,10 @@ import sys
 import textwrap
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    pytest = None
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -66,7 +69,19 @@ def test_optional_features_explain_what_to_install():
 
 
 def test_pyproject_declares_no_required_dependencies():
-    tomllib = pytest.importorskip("tomllib")  # Python 3.11+
+    try:
+        import tomllib
+    except ImportError:
+        if pytest:
+            pytest.skip("tomllib not available")
+        return
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     assert project["dependencies"] == []
     assert {"torch", "numpy"} <= set(project["optional-dependencies"])
+
+
+if __name__ == "__main__":
+    test_import_hk_needs_nothing()
+    test_optional_features_explain_what_to_install()
+    test_pyproject_declares_no_required_dependencies()
+    print("All zero-dependency tests passed successfully!")

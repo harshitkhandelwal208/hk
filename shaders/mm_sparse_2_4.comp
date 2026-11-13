@@ -1,0 +1,72 @@
+#version 450
+layout(local_size_x = 64) in;
+
+layout(std430, binding = 0) readonly buffer MetaBuffer {
+    uint meta32[];
+};
+
+layout(std430, binding = 1) readonly buffer ValBuffer {
+    float vals[];
+};
+
+layout(std430, binding = 2) readonly buffer XBuffer {
+    float x[];
+};
+
+layout(std430, binding = 3) buffer YBuffer {
+    float y[];
+};
+
+layout(std430, binding = 4) readonly buffer BBuffer {
+    float bias[];
+};
+
+layout(push_constant) uniform Push {
+    uint rows;
+    uint cols;
+    uint n_tokens;
+    uint x_stride;
+    uint y_stride;
+    uint has_bias;
+    uint val_offset;
+    uint mode;
+} p;
+
+void main() {
+    uint tid = gl_GlobalInvocationID.x;
+    uint t = gl_GlobalInvocationID.y;
+
+    if (tid >= p.rows || t >= p.n_tokens) return;
+
+    uint r = tid;
+    uint groups_per_row = p.cols / 4u;
+    uint g_start = r * groups_per_row;
+    uint xb = t * p.x_stride;
+
+    float acc = 0.0;
+
+    for (uint g_idx = 0u; g_idx < groups_per_row; g_idx++) {
+        uint g = g_start + g_idx;
+        uint u_idx = g / 8u;
+        uint nib_idx = g % 8u;
+        uint meta_word = meta32[u_idx];
+        uint nibble = (meta_word >> (nib_idx * 4u)) & 15u;
+
+        uint idx0 = nibble & 3u;
+        uint idx1 = (nibble >> 2u) & 3u;
+
+        uint val_idx = p.val_offset + g * 2u;
+        float v0 = vals[val_idx];
+        float v1 = vals[val_idx + 1u];
+
+        uint k_base = xb + g_idx * 4u;
+        acc += v0 * x[k_base + idx0] + v1 * x[k_base + idx1];
+    }
+
+    if (p.has_bias != 0u) {
+        acc += bias[r];
+    }
+
+    uint yi = t * p.y_stride + r;
+    y[yi] = (p.mode == 1u) ? (y[yi] + acc) : acc;
+}

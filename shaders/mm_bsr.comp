@@ -1,0 +1,75 @@
+#version 450
+layout(local_size_x = 64) in;
+
+layout(std430, binding = 0) readonly buffer RowPtrsBuffer {
+    uint row_ptrs[];
+};
+
+layout(std430, binding = 1) readonly buffer ColIndicesBuffer {
+    uint col_indices[];
+};
+
+layout(std430, binding = 2) readonly buffer BlockValsBuffer {
+    float block_vals[];
+};
+
+layout(std430, binding = 3) readonly buffer XBuffer {
+    float x[];
+};
+
+layout(std430, binding = 4) buffer YBuffer {
+    float y[];
+};
+
+layout(std430, binding = 5) readonly buffer BBuffer {
+    float bias[];
+};
+
+layout(push_constant) uniform Push {
+    uint rows;
+    uint cols;
+    uint n_tokens;
+    uint block_h;
+    uint block_w;
+    uint x_stride;
+    uint y_stride;
+    uint has_bias;
+    uint mode;
+} p;
+
+void main() {
+    uint tid = gl_GlobalInvocationID.x;
+    uint t = gl_GlobalInvocationID.y;
+
+    if (tid >= p.rows || t >= p.n_tokens) return;
+
+    uint r = tid;
+    uint bh = p.block_h;
+    uint bw = p.block_w;
+    uint br = r / bh;
+    uint r_in_block = r % bh;
+
+    uint start_b = row_ptrs[br];
+    uint end_b = row_ptrs[br + 1u];
+    uint xb = t * p.x_stride;
+
+    float acc = 0.0;
+    uint block_size = bh * bw;
+
+    for (uint b = start_b; b < end_b; b++) {
+        uint bc = col_indices[b];
+        uint block_val_base = b * block_size + r_in_block * bw;
+        uint x_col_base = xb + bc * bw;
+
+        for (uint c = 0u; c < bw; c++) {
+            acc += block_vals[block_val_base + c] * x[x_col_base + c];
+        }
+    }
+
+    if (p.has_bias != 0u) {
+        acc += bias[r];
+    }
+
+    uint yi = t * p.y_stride + r;
+    y[yi] = (p.mode == 1u) ? (y[yi] + acc) : acc;
+}

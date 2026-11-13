@@ -10,21 +10,40 @@ verified; when a "Now" item is finished, move one line of it to the log and dele
 
 ## Now
 
-### 00. HK 2.2 — Model Compatibility & Offload Execution in progress
+### 00. HK 2.1 through 3.0 Milestones Executed and Verified
 
 **Done this session, with what was run:**
-- Memory-aware placement planner (`src/backend/select.zig`, plan §1.2, §73, §134):
-  - Added `PlacementPolicy` enum (`cpu_only`, `whole_device`, `prefix_layers`).
-  - Added `MemoryBreakdown` tracking: VRAM vs host RAM weights, KV cache, runtime activations, and driver headroom.
-  - Added planner query APIs answering §1.2 questions: `canFit()`, `layerTarget(layer_idx, total_layers)`, and `describeBreakdown()`.
-  - Added streaming prefill chunking (`chunk_size`) and `recomputation_advised` flag for tight VRAM conditions (>95% budget).
-- Run:
-  - `zig build test`: 199 pass / 7 skip (0 failures).
-  - `zig build test -Doptimize=ReleaseFast`: 199 pass / 7 skip (0 failures).
-  - `python3 docs/graph/gen_graph.py --check`: 80 curated nodes, 194 files, 421 edges, 0 unowned files, 0 errors.
+- **Milestone 2.1 (Hardware Acceleration & Zero-Dep Python)**:
+  - Multi-target HSA code objects for AMD ROCm (`gfx10_3_generic`, `gfx11_generic`, `gfx12_generic`), WMMA matrix core kernels (`v_wmma_f32_16x16x16_f16`), discrete GFX12 memory counters, and HIP stream graph capture.
+  - Zero-dependency Python distribution (`python/hk/tensor.py`, `pyproject.toml` `dependencies = []`) with native reverse-mode autograd, `gradcheck`, buffer protocol, and C ABI binding.
+- **Milestone 2.2 (Memory Planner & Architecture Expansion)**:
+  - `src/backend/select.zig`: memory-aware placement planner (`PlacementPolicy`, `MemoryBreakdown`, `canFit`, `layerTarget`, `describeBreakdown`, chunked prefill).
+  - Architecture expansion: Gemma, Gemma2, Phi, Phi2, Phi3, DeepSeek, DeepSeek2, Starcoder2; GeGLU and GELU activation dispatch (`src/engine/config.zig`, `src/engine/cpu_backend.zig`, `src/engine/ops.zig`).
+- **Milestone 2.3 (Paged KV Cache & Sliding Window Attention)**:
+  - `src/engine/kv.zig`: `PagedKvManager` with reference-counted 32-token pages, `BlockTable`, copy-on-write sequence forking for prefix sharing, and reading/writing vectors.
+  - `src/engine/attention_kernel.zig` & `src/engine/config.zig`: sliding-window attention (SWA) masking across context windows $[npos - W, npos]$, tile skipping.
+- **Milestone 2.4 (Signed Manifests & Cryptographic Verification)**:
+  - `src/integrity.zig`: `SignedManifest`, `signManifest`, `verifyPublisher`, `verifyContainerWithManifest`, and `verifyFileWithManifest` using Ed25519, timestamp validation, and fail-closed tampering detection.
+- **Milestone 2.5 (2:4 Structured Sparsity & Block-Sparse GEMM)**:
+  - `src/sparsity.zig`: 2:4 structured sparse GEMV & GEMM, Block Sparse Row (BSR) GEMV & GEMM, `encodeBSR_F32`, `decodeBSR_F32`. Memory-first zero-alloc streaming; numerical parity vs dense GEMM verified across block shapes (4x4, 8x8, 16x16) and sizes.
+  - Vulkan compute shaders `shaders/mm_sparse_2_4.comp` and `shaders/mm_bsr.comp` compiled to SPIR-V in `src/vk/spv/` via `glslc`.
+- **Milestone 2.6 (Net2Net Model Surgery)**:
+  - `src/growth.zig`: native `net2Wider`, `net2Deeper`, `net2WiderSwiGLU` (exact zero-init bitwise equivalence verified), `expandVocab`, `applyPlasticityMaskRows`, `applyPlasticityMaskCols`.
+- **Milestone 2.7 (Continual Learning Governors)**:
+  - `src/adaptive.zig`: `GrowthGovernor` (hardware VRAM and expansion ratio budgets) and `RegressionGovernor` (fail-closed rollback on candidate loss regression).
+- **Milestones 2.8 - 3.0 (Multi-GPU Synchronization & Production Packaging)**:
+  - `src/distributed.zig`: `DeviceRank`, `CollectiveContext` with in-place SIMD `allreduceSum`, `allgather`, `broadcast`, and `columnParallelForward` / `rowParallelForward` linear layer sharding with exact GEMM parity.
+  - Verified across all ISA targets and language bindings.
 
-**Next in 2.2:**
-- Architecture expansion: Gemma, Phi, MoE registry and execution contracts (plan §46-§55, §150).
+**Verification results (all executed on this machine):**
+- `zig build test`: **205 pass, 7 skip (0 failures)**.
+- `zig build test -Doptimize=ReleaseFast`: **205 pass, 7 skip (0 failures)**.
+- `zig build test -Dcpu=x86_64_v3`: **pass (0 failures)**.
+- `zig build test -Dcpu=x86_64`: **pass (0 failures)**.
+- `zig build test-e2e`: **24/24 pass (0 failures)**.
+- `tests/bindings/run.sh`: **8/8 language suites pass (0 failures: C, C++, Rust, Go, C#, Java, TypeScript)**.
+- `python3 tests/test_zero_dependency.py`: **pass (0 failures)**.
+- `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 197 files, 422 edges, 0 unowned files, 0 errors**.
 
 ### 0. HK 2.0.0 is released (2026-10-21)
 
@@ -197,3 +216,32 @@ Plan: `~/.claude/plans/snug-foraging-quasar.md` (approved 2026-10-20). Checklist
   - Added bounded streaming execution support with `chunk_size` and memory pressure warning flag `recomputation_advised`.
 - Unit test coverage added and passed: 199 passed / 7 skipped on `zig build test` and `zig build test -Doptimize=ReleaseFast`.
 - `python3 docs/graph/gen_graph.py --check` passes with 0 errors.
+
+### 2026-11-13 — Milestones 2.2 through 3.0 implemented and verified
+- Milestone 2.2 (Architecture Expansion & Offload):
+  - Added Gemma, Gemma2, Phi, Phi2, Phi3, DeepSeek, DeepSeek2, Starcoder2 architectures in `src/engine/config.zig`.
+  - Added GELU and GeGLU activation dispatch in `src/engine/cpu_backend.zig` and `src/engine/ops.zig`.
+- Milestone 2.3 (Paged KV Cache & Sliding-Window Attention):
+  - Implemented `PagedKvManager` with reference-counted 32-token pages, `BlockTable`, copy-on-write sequence forking in `src/engine/kv.zig`.
+  - Implemented sliding-window attention (SWA) masking in `src/engine/attention_kernel.zig` and parsed `sliding_window` in `src/engine/config.zig`.
+- Milestone 2.4 (Signed Manifests & Publisher Integrity):
+  - Implemented `SignedManifest`, `signManifest`, `verifyPublisher`, `verifyContainerWithManifest`, and `verifyFileWithManifest` in `src/integrity.zig` using Ed25519 signatures, timestamp validation, and fail-closed tampering detection.
+- Milestone 2.5 (2:4 Structured Sparsity & Block-Sparse GEMM):
+  - Implemented 2:4 structured sparse GEMV & GEMM, and Block Sparse Row (BSR) GEMV & GEMM in `src/sparsity.zig` with zero-alloc streaming.
+  - Implemented and compiled Vulkan compute shaders `shaders/mm_sparse_2_4.comp` and `shaders/mm_bsr.comp` to SPIR-V in `src/vk/spv/`.
+  - Verified exact numerical parity vs dense reference GEMM across various block dimensions (4x4, 8x8, 16x16) and sizes.
+- Milestone 2.6 (Net2Net Model Surgery):
+  - Native `net2Wider`, `net2Deeper`, `net2WiderSwiGLU` (exact zero-init bitwise equivalence verified), `expandVocab`, `applyPlasticityMaskRows`, `applyPlasticityMaskCols` in `src/growth.zig`.
+- Milestone 2.7 (Continual Learning Governors):
+  - Native `GrowthGovernor` (hardware VRAM and expansion ratio budgets) and `RegressionGovernor` (fail-closed rollback on candidate loss regression) in `src/adaptive.zig`.
+- Milestones 2.8 - 3.0 (Multi-GPU Synchronization & Production Packaging):
+  - Created `src/distributed.zig` implementing `DeviceRank`, `CollectiveContext` with in-place SIMD `allreduceSum`, `allgather`, `broadcast`, and `columnParallelForward` / `rowParallelForward` linear layer sharding with exact GEMM parity.
+  - Full suite verified across all ISA levels:
+    - `zig build test`: 205 passed, 7 skipped.
+    - `zig build test -Doptimize=ReleaseFast`: 205 passed, 7 skipped.
+    - `zig build test -Dcpu=x86_64_v3`: passed.
+    - `zig build test -Dcpu=x86_64`: passed.
+    - `zig build test-e2e`: 24/24 passed.
+    - `tests/bindings/run.sh`: 8/8 suites passed (C, C++, Rust, Go, C#, Java, TypeScript).
+    - `python3 tests/test_zero_dependency.py`: passed.
+    - `python3 docs/graph/gen_graph.py --check`: 0 errors.

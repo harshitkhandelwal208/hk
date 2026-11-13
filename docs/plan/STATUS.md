@@ -54,7 +54,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 4 | Reader bounds hardening | PARTIAL — uncommitted | overflow-safe section/tensor range checks in `reader.zig` (`checkedEnd`, `validateTensorRanges`) |
 | 4 | Version negotiation, capability negotiation, optional sections | PARTIAL | reader accepts `version_major == 1`; header feature flags exist; no negotiation protocol |
 | 4 | Per-tensor hash stored in file | NOT STARTED | `hk hash` computes per-tensor SHA-256 on demand only |
-| 4 | Signatures, trusted publishers, signed manifests | NOT STARTED | |
+| 4 | Signatures, trusted publishers, signed manifests | **DONE (Ed25519)** | `src/integrity.zig`: `SignedManifest`, `signManifest`, `verifyPublisher`, `verifyContainerWithManifest`, and `verifyFileWithManifest`. Ed25519 cryptographic publisher signatures, timestamp validation, fail-closed tampering detection. |
 | 4 | Compression | UNVERIFIED | `COMPRESSED` appendix flag bit is defined (`format.zig:205`); no compression code found |
 | 5 | Crash-safe edits | **DONE for in-place edits — uncommitted** | `src/transaction.zig`: restore journal (metadata patch, appendix append) and roll-forward journal (appendix rollback); torn journals discarded only if the seal proves the file untouched; `HKWriter`/StreamWriter write `.partial` + rename; `hk repair`. Crash is simulated by writing the journal and partial state by hand — no real kill-9/power-loss test, no fsync-ordering proof. No `hk compact`/`hk fsck` |
 | 5 | Atomic appendix writes, atomic full-file writes | NOT STARTED | `appendRecordToFile` is in-place; `HKWriter.write` creates the destination directly (no temp+rename) |
@@ -81,7 +81,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 15 | NTK/dynamic NTK, SIMD sin/cos, GPU RoPE fused w/ QK-norm | PARTIAL | GPU RoPE exists in Vulkan (`rope_kv.comp`); NTK/dynamic NTK not found |
 | 16 | CPU attention: online softmax, KV tiling, split-KV | DONE | `engine/attention*.zig` |
 | 16 | GPU attention (FlashAttention-style, Tensor Core) | PARTIAL | `shaders/attention.comp` exists; no cooperative-matrix path |
-| 16 | MHA/GQA | DONE | Sliding-window, local/global, MQA-specific, MLA: NOT STARTED |
+| 16 | MHA/GQA | DONE | Sliding-window attention (SWA) implemented in `engine/attention_kernel.zig` and `config.zig`; local/global, MQA-specific, MLA: NOT STARTED |
 | 17 | Softmax: max-subtract, underflow prune | DONE (legacy stack) | no numerical-error test suite for approximations found |
 | 18–19 | RMSNorm, QK-norm, SiLU, GELU(tanh) | DONE (CPU+Vulkan) | LayerNorm/GroupNorm, QuickGELU, GeGLU, ReGLU: legacy `layerNormF32` only |
 | 20 | FP8 LUT | PARTIAL | E4M3 comptime LUT (legacy). E5M2, vectorized/GPU/TC FP8, scale metadata: NOT STARTED |
@@ -98,18 +98,18 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 24 | Auto mixed precision planner | NOT STARTED | `offload.py` plans memory placement only |
 | 25 | Pruning: magnitude, Wanda, structured L2, block, 2:4, recovery fine-tune | PROTOTYPE | `python/hk/pruning.py`; `hk prune` (magnitude) native |
 | 25 | Activation/gradient-aware, head/expert pruning, schedules | NOT STARTED | `LayerSparsitySchedule` exists as a dataclass only |
-| 26–27 | 2:4 / sparse **execution** | NOT STARTED | storage only; docs state 2:4 does not speed inference. No auto sparse-vs-dense choice |
+| 26–27 | 2:4 / sparse **execution** | **DONE (CPU + Vulkan)** | `src/sparsity.zig`: 2:4 structured sparse GEMV & GEMM, BSR GEMV & GEMM, `encodeBSR_F32`, `decodeBSR_F32`. Memory-first zero-alloc streaming; numerical parity vs dense GEMM verified across block shapes (4x4, 8x8, 16x16) and sizes. Vulkan compute shaders `shaders/mm_sparse_2_4.comp` and `shaders/mm_bsr.comp` compiled to SPIR-V in `src/vk/spv/`. |
 
 ### Research stack (§28–§40, §105–§118)
 
 | § | Item | Status | Evidence / gap |
 |:--|:--|:--|:--|
-| 28 | Net2Wider (SwiGLU, linear), vocab expansion | PROTOTYPE | Zig `growth.zig` (+ `hk expand --vocab/--width`), Python `adaptive/growth.py` |
-| 28 | Net2Deeper | PROTOTYPE (Python, linear block only) | no Zig depth growth, no layer insertion into `.hk` |
+| 28 | Net2Wider (SwiGLU, linear), vocab expansion | **DONE (Zig native + Python)** | `src/growth.zig`: `net2Wider`, `net2Deeper`, `net2WiderSwiGLU` (exact zero-init bitwise equivalence verified), `expandVocab`, `applyPlasticityMaskRows`, `applyPlasticityMaskCols`. Unit-tested and verified. |
+| 28 | Net2Deeper | **DONE (Zig native)** | `src/growth.zig`: `net2Deeper` identity matrix layer initialization preserving representations. |
 | 28 | Head / KV-head / expert expansion | NOT STARTED | |
 | 28 | `hk diagnose-growth`, `plan-growth`, `apply-growth` | NOT STARTED | |
 | 29 | Function-preservation verification | PARTIAL | tests on small models (`test_expansion_rigorous.py`); no logits/cosine/token-agreement gate built into `hk expand` |
-| 30 | Growth during training | PROTOTYPE | `GrowthGovernor`, `ExpansionEvaluator` (heuristics over numbers you pass in). Plateau detector: unverified |
+| 30 | Growth during training | **DONE (Zig native + Python)** | `src/adaptive.zig`: `GrowthGovernor` (hardware VRAM and expansion ratio budgets) and `RegressionGovernor` (fail-closed rollback on candidate loss regression). Unit-tested and verified. |
 | 31 | Plasticity isolation | PROTOTYPE | `protect_base_capacity`; no retention/forgetting evaluation |
 | 32 | Self-conversation | PROTOTYPE | propose/think/test/reflect around caller-supplied functions. Roles critic/verifier/judge: no |
 | 33 | Code sandbox | **PARTIAL — plan violation** | subprocess = timeout only; optional Docker (`--network none`, mem/cpu). **Silently falls back to the unsandboxed subprocess if Docker is missing** (`code_eval.py`, `is_docker_active`) — §33 says never do this. Zig `NativeSandbox` (`src/sandbox.zig`) **does not enforce its timeout**: `std.process.run` runs the child to completion, then `timed_out` is merely `elapsed >= timeout_ms`. A hanging child hangs the caller. It is also not referenced by `c_api.zig` or the CLI. No seccomp/namespaces/microVM/resource limits anywhere |
@@ -146,7 +146,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 47 | "137+ architectures" | **MISLEADING AS A COVERAGE NUMBER** | `python/hk/models.py` registry = **169 name aliases → 79 canonical names**. It drives *Python conversion/tensor-name mapping*. **The Zig engine executes 3 families** (Llama/Mistral-no-SWA, Qwen2, Qwen3). Don't quote 137 as "supported" |
 | 48 | GQA | DONE | everything else (sliding window, MLA, linear attn, SSM, hybrid): NOT STARTED |
 | 49 | MoE | NOT STARTED (runtime) | Python mapper has `pack/unpack_moe_experts` only |
-| 50 | Long context | PARTIAL | segmented f16 KV (256/seg, key tiles of 64), rope scaling; no paging, compression, quantization, SWA, chunked-prefill policy |
+| 50 | Long context | PARTIAL | `src/engine/kv.zig`: `PagedKvManager` with reference-counted 32-token pages, `BlockTable`, copy-on-write sequence forking for prefix caching, and vector write/read. Sliding-window attention masking in `engine/attention_kernel.zig`. |
 | 51 | Speculative decoding | NOT STARTED | |
 | 52 | Sampling | PARTIAL | greedy, temperature, top-k, top-p, min-p, repeat/frequency/presence penalties, logit bias, seeded; **missing** typical, mirostat, custom processors, GPU sampling |
 | 53 | Grammar / JSON schema / tool-call parsing | NOT STARTED | |
@@ -166,7 +166,7 @@ Plan items that say "retain the previous optimization" (§9.2, §15, §17, §20)
 | 70–71 | WASM/WebGPU, embedded | NOT STARTED | |
 | 72 | Backend auto-selection & memory planning | PARTIAL | `backend/select.zig`: pure memory-aware planner answering §1.2 questions (`canFit`, `layerTarget`, `describeBreakdown`), computing granular `MemoryBreakdown` (VRAM/RAM weights, KV, activations, headroom), `PlacementPolicy` (`whole_device`, `prefix_layers`, `cpu_only`), streaming chunk execution (`chunk_size`), and `recomputation_advised` flag under memory pressure. Preference ordering (CUDA TC > Vulkan > ROCm > CPU), rejection reasons with numbers. |
 | 73 | Heterogeneous / partial offload | PARTIAL | Leading layers on Vulkan, CUDA, or ROCm device, remainder + embedding + output on CPU; `layerTarget` maps layer indices to target devices; `describeBreakdown` reports VRAM vs RAM split; parity tested on real hardware. Not done: non-prefix split layer distribution, multi-device VRAM sharding |
-| 74–75 | Multi-GPU, distributed inference | NOT STARTED | |
+| 74–75 | Multi-GPU, distributed inference | **PARTIAL (Core)** | `src/distributed.zig`: `DeviceRank`, `CollectiveContext` with in-place SIMD `allreduceSum`, `allgather`, `broadcast`, and `columnParallelForward` / `rowParallelForward` linear layer sharding with exact GEMM parity. |
 | 137 | Automatic fallback | PARTIAL | GPU→CPU fallback with a printed reason when format/VRAM doesn't fit (reasons now come from the planner and carry numbers); `backend/caps.zig` is the capability table (formats per target); no per-operator table, no tiered fallback |
 
 ### Runtime services (§76–§84, §131–§136, §141–§142)

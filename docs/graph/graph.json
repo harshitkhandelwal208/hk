@@ -5,18 +5,18 @@
  "stats": {
   "curated_nodes": 80,
   "curated_edges": 152,
-  "file_nodes": 194,
-  "import_edges": 421,
+  "file_nodes": 197,
+  "import_edges": 422,
   "unowned_files": 0,
   "status_counts": {
    "done": 9,
-   "partial": 16,
+   "partial": 19,
    "in-progress": 2,
    "prototype": 8,
    "storage-only": 1,
    "legacy": 1,
    "untested-hw": 1,
-   "not-started": 22
+   "not-started": 19
   }
  },
  "nodes": [
@@ -842,15 +842,19 @@
   },
   {
    "id": "sparse-execution",
-   "type": "planned",
-   "label": "Sparse execution (2:4, Tensor Core sparse)",
-   "status": "not-started",
+   "type": "subsystem",
+   "label": "Sparse execution (2:4, BSR, Vulkan shaders)",
+   "status": "partial",
    "plan": [
     26,
     27
    ],
-   "paths": [],
-   "note": ""
+   "paths": [
+    "src/sparsity.zig",
+    "shaders/mm_sparse_2_4.comp",
+    "shaders/mm_bsr.comp"
+   ],
+   "note": "2:4 structured sparse and BSR GEMM/GEMV CPU kernels and Vulkan compute shaders."
   },
   {
    "id": "dual-mode-runtime",
@@ -866,16 +870,18 @@
   },
   {
    "id": "signatures-registry",
-   "type": "planned",
-   "label": "Signatures, trusted publishers, model registry",
-   "status": "not-started",
+   "type": "subsystem",
+   "label": "Signatures, trusted publishers, signed manifests",
+   "status": "partial",
    "plan": [
     4,
     37,
     94
    ],
-   "paths": [],
-   "note": ""
+   "paths": [
+    "src/integrity.zig"
+   ],
+   "note": "Ed25519 cryptographic publisher verification and signed manifests."
   },
   {
    "id": "lineage-vcs",
@@ -893,16 +899,18 @@
   },
   {
    "id": "distributed",
-   "type": "planned",
+   "type": "subsystem",
    "label": "Multi-GPU / distributed inference + training",
-   "status": "not-started",
+   "status": "partial",
    "plan": [
     74,
     75,
     115
    ],
-   "paths": [],
-   "note": ""
+   "paths": [
+    "src/distributed.zig"
+   ],
+   "note": "Tensor and pipeline parallelism with collective operations (allreduce, allgather, broadcast)."
   },
   {
    "id": "profiling-autotune",
@@ -1516,12 +1524,28 @@
    "owner": "backend-vulkan"
   },
   {
+   "id": "file:shaders/mm_bsr.comp",
+   "type": "file",
+   "label": "shaders/mm_bsr.comp",
+   "lang": "glsl",
+   "loc": 75,
+   "owner": "sparse-execution"
+  },
+  {
    "id": "file:shaders/mm_cm.comp",
    "type": "file",
    "label": "shaders/mm_cm.comp",
    "lang": "glsl",
    "loc": 134,
    "owner": "backend-vulkan"
+  },
+  {
+   "id": "file:shaders/mm_sparse_2_4.comp",
+   "type": "file",
+   "label": "shaders/mm_sparse_2_4.comp",
+   "lang": "glsl",
+   "loc": 72,
+   "owner": "sparse-execution"
   },
   {
    "id": "file:shaders/mmv.comp",
@@ -1592,7 +1616,7 @@
    "type": "file",
    "label": "src/adaptive.zig",
    "lang": "zig",
-   "loc": 88,
+   "loc": 181,
    "owner": "growth"
   },
   {
@@ -1788,6 +1812,14 @@
    "owner": "backend-cuda-engine"
   },
   {
+   "id": "file:src/distributed.zig",
+   "type": "file",
+   "label": "src/distributed.zig",
+   "lang": "zig",
+   "loc": 307,
+   "owner": "distributed"
+  },
+  {
    "id": "file:src/dynlib.zig",
    "type": "file",
    "label": "src/dynlib.zig",
@@ -1824,7 +1856,7 @@
    "type": "file",
    "label": "src/engine/attention_kernel.zig",
    "lang": "zig",
-   "loc": 281,
+   "loc": 290,
    "owner": "engine"
   },
   {
@@ -1832,7 +1864,7 @@
    "type": "file",
    "label": "src/engine/config.zig",
    "lang": "zig",
-   "loc": 315,
+   "loc": 341,
    "owner": "engine"
   },
   {
@@ -1840,7 +1872,7 @@
    "type": "file",
    "label": "src/engine/cpu_backend.zig",
    "lang": "zig",
-   "loc": 362,
+   "loc": 365,
    "owner": "engine"
   },
   {
@@ -1848,7 +1880,7 @@
    "type": "file",
    "label": "src/engine/kv.zig",
    "lang": "zig",
-   "loc": 152,
+   "loc": 379,
    "owner": "kv-cache"
   },
   {
@@ -1872,7 +1904,7 @@
    "type": "file",
    "label": "src/engine/ops.zig",
    "lang": "zig",
-   "loc": 340,
+   "loc": 355,
    "owner": "engine"
   },
   {
@@ -1944,7 +1976,7 @@
    "type": "file",
    "label": "src/growth.zig",
    "lang": "zig",
-   "loc": 343,
+   "loc": 587,
    "owner": "growth"
   },
   {
@@ -2000,7 +2032,7 @@
    "type": "file",
    "label": "src/integrity.zig",
    "lang": "zig",
-   "loc": 126,
+   "loc": 226,
    "owner": "integrity"
   },
   {
@@ -2200,7 +2232,7 @@
    "type": "file",
    "label": "src/root.zig",
    "lang": "zig",
-   "loc": 82,
+   "loc": 83,
    "owner": "c-abi"
   },
   {
@@ -2256,7 +2288,7 @@
    "type": "file",
    "label": "src/sparsity.zig",
    "lang": "zig",
-   "loc": 261,
+   "loc": 760,
    "owner": "sparsity-storage"
   },
   {
@@ -4282,6 +4314,21 @@
    "type": "implemented_by"
   },
   {
+   "s": "sparse-execution",
+   "t": "file:shaders/mm_bsr.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "sparse-execution",
+   "t": "file:shaders/mm_sparse_2_4.comp",
+   "type": "implemented_by"
+  },
+  {
+   "s": "distributed",
+   "t": "file:src/distributed.zig",
+   "type": "implemented_by"
+  },
+  {
    "s": "tests-suite",
    "t": "file:tests/conftest.py",
    "type": "implemented_by"
@@ -6069,6 +6116,11 @@
   {
    "s": "file:src/root.zig",
    "t": "file:src/cuda.zig",
+   "type": "imports"
+  },
+  {
+   "s": "file:src/root.zig",
+   "t": "file:src/distributed.zig",
    "type": "imports"
   },
   {

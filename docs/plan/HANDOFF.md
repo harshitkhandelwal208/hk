@@ -264,3 +264,23 @@ Plan: `~/.claude/plans/snug-foraging-quasar.md` (approved 2026-10-20). Checklist
     - `tests/bindings/run.sh`: 8/8 suites passed (C, C++, Rust, Go, C#, Java, TypeScript).
     - `python3 tests/test_zero_dependency.py`: passed.
     - `python3 docs/graph/gen_graph.py --check`: 0 errors.
+
+### 2026-11-13 — Milestone 3.0 (Universal Neural Runtime) Fully Finalized and Verified
+- Multi-Architecture Native Runtime Expansion:
+  - Mixture of Experts (MoE, `src/models/moe.zig`): Top-K routing with softmax/sigmoid normalization, invariant sum(w_k) = 1.0, and DeepSeek-style shared expert residual pathway.
+  - Multimodal Vision & Audio Transformers (`src/models/multimodal.zig`): ViT/CLIP 2D patch extractor, spatial position embeddings, vision-to-text projection bridge, and Whisper 1D temporal convolution subsampler.
+  - State-Space Model & Mamba Selective Scan (`src/models/ssm.zig`): Depthwise causal 1D conv buffer with SiLU activation, continuous-to-discrete ZOH discretization (A_bar = exp(Delta * A), B_bar = Delta * B), recurrent S6 step with skip connection D, parallel associative selective scan for prefill, and gated output combine. Exact decode/prefill equivalence verified within 1e-6.
+  - Multi-architecture execution parity tests (`tests/test_engine.zig`): Verified Gemma (`gelu_tanh` and `qk_norm`) and Qwen2 (`qkv_bias`) native execution determinism.
+  - Constrained Neural Architecture Search & Hardware-Aware Design (`src/arch_search.zig`): Multi-objective search, Pareto frontier optimization, hardware queries (§113-§114: optimal architecture under VRAM budget, optimal quantization format, memory bandwidth saturation).
+  - Cross-Backend Hardware-Neutral GeGLU: Implemented `geglu` activation across Vulkan (`shaders/geglu.comp`, SPIR-V `src/vk/spv/geglu.spv`, `src/vk/engine.zig`), CUDA (PTX kernel in `src/cuda_device.zig`), and AMD ROCm/HIP (`src/gpu/engine.zig`), ensuring Gemma and GELU-tanh architectures execute natively without CPU fallback.
+- Full verification passed (this machine: Ryzen 7 7445HS, RTX 3050 6GB Laptop, Linux 7.2):
+  - `zig build test`: **262 passed, 7 skipped (0 failures)**.
+  - `zig build test -Doptimize=ReleaseFast`: **262 passed, 7 skipped (0 failures)**.
+  - `zig build test -Dcpu=x86_64_v3`: **passed (0 failures)**.
+  - `zig build test -Dcpu=x86_64`: **passed (0 failures)**.
+  - `zig build test-e2e`: **26/26 passed (0 failures)**.
+  - `bash tests/bindings/run.sh`: **8/8 language suites passed (0 failures)**.
+  - `python3 tests/test_zero_dependency.py`: **passed (0 failures)**.
+  - `python3 docs/graph/gen_graph.py --check`: **80 curated nodes, 213 files, 452 import edges, 0 unowned files, 0 errors**.
+- Universal hardware-neutral invariant: HK is not specialized for any single architecture (e.g. LLaMA only) or vendor silicon (e.g. NVIDIA only); it executes universally across CPU, Vulkan, CUDA, and ROCm/HIP.
+- Working tree clean. All milestones from 2.1 to 3.0 complete.

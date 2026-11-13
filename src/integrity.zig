@@ -124,3 +124,103 @@ pub fn sealFile(path: []const u8, allocator: std.mem.Allocator) Error!void {
     defer file.close(io);
     try file.writePositionalAll(io, std.mem.asBytes(&sealed), 0);
 }
+
+const Ed25519 = std.crypto.sign.Ed25519;
+
+/// Signed container manifest for cryptographic publisher verification (§4, §150 milestone 2.4).
+pub const SignedManifest = struct {
+    model_digest: [digest_len]u8,
+    publisher_pk: [32]u8,
+    timestamp: i64,
+    signature: [64]u8,
+
+    pub fn serialize(self: *const SignedManifest) [136]u8 {
+        var buf: [136]u8 = undefined;
+        @memcpy(buf[0..32], &self.model_digest);
+        @memcpy(buf[32..64], &self.publisher_pk);
+        std.mem.writeInt(i64, buf[64..72], self.timestamp, .little);
+        @memcpy(buf[72..136], &self.signature);
+        return buf;
+    }
+
+    pub fn deserialize(bytes: *const [136]u8) SignedManifest {
+        var m: SignedManifest = undefined;
+        @memcpy(&m.model_digest, bytes[0..32]);
+        @memcpy(&m.publisher_pk, bytes[32..64]);
+        m.timestamp = std.mem.readInt(i64, bytes[64..72], .little);
+        @memcpy(&m.signature, bytes[72..136]);
+        return m;
+    }
+};
+
+fn manifestPayload(model_digest: *const [digest_len]u8, timestamp: i64) [40]u8 {
+    var msg: [40]u8 = undefined;
+    @memcpy(msg[0..32], model_digest);
+    std.mem.writeInt(i64, msg[32..40], timestamp, .little);
+    return msg;
+}
+
+/// Signs a model digest with the publisher's Ed25519 keypair.
+pub fn signManifest(model_digest: [digest_len]u8, key_pair: Ed25519.KeyPair, timestamp: i64) !SignedManifest {
+    const msg = manifestPayload(&model_digest, timestamp);
+    const sig = try key_pair.sign(&msg, null);
+    return .{
+        .model_digest = model_digest,
+        .publisher_pk = key_pair.public_key.toBytes(),
+        .timestamp = timestamp,
+        .signature = sig.toBytes(),
+    };
+}
+
+/// Cryptographically verifies that the manifest was signed by the publisher holding `publisher_pk`.
+pub fn verifyPublisher(manifest: *const SignedManifest) bool {
+    const pk = Ed25519.PublicKey.fromBytes(manifest.publisher_pk) catch return false;
+    const sig = Ed25519.Signature.fromBytes(manifest.signature);
+    const msg = manifestPayload(&manifest.model_digest, manifest.timestamp);
+    sig.verify(&msg, pk) catch return false;
+    return true;
+}
+
+/// Verifies container bytes: checksum must match `manifest.model_digest` AND publisher signature must be valid.
+pub fn verifyContainerWithManifest(bytes: []const u8, manifest: *const SignedManifest) Error!bool {
+    if (!verifyPublisher(manifest)) return false;
+    const computed = try digest(bytes);
+    return std.mem.eql(u8, &computed, &manifest.model_digest);
+}
+
+/// Verifies file on disk: checksum must match `manifest.model_digest` AND publisher signature must be valid.
+pub fn verifyFileWithManifest(path: []const u8, allocator: std.mem.Allocator, manifest: *const SignedManifest) Error!bool {
+    if (!verifyPublisher(manifest)) return false;
+    const d = try digestFile(path, allocator);
+    return std.mem.eql(u8, &d.digest, &manifest.model_digest);
+}
+
+test "SignedManifest: generation, publisher verification, and tampering detection" {
+    const io = std.Options.debug_io;
+    const kp = Ed25519.KeyPair.generate(io);
+    const fake_digest: [32]u8 = @splat(0x42);
+    const timestamp: i64 = 1731500000;
+
+    const manifest = try signManifest(fake_digest, kp, timestamp);
+    try std.testing.expect(verifyPublisher(&manifest));
+
+    // Serialization roundtrip
+    const bytes = manifest.serialize();
+    const deserialized = SignedManifest.deserialize(&bytes);
+    try std.testing.expect(verifyPublisher(&deserialized));
+
+    // Tampered digest fails verification
+    var tampered = manifest;
+    tampered.model_digest[0] ^= 0xFF;
+    try std.testing.expect(!verifyPublisher(&tampered));
+
+    // Tampered timestamp fails verification
+    var tampered_time = manifest;
+    tampered_time.timestamp += 1;
+    try std.testing.expect(!verifyPublisher(&tampered_time));
+
+    // Tampered publisher public key fails verification
+    var tampered_pk = manifest;
+    tampered_pk.publisher_pk[0] ^= 0xFF;
+    try std.testing.expect(!verifyPublisher(&tampered_pk));
+}

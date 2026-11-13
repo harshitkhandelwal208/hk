@@ -24,17 +24,22 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = [
-    "torch>=2.0.0",
-    "numpy>=1.22.0",
-]
+# hk installs with no dependencies: the command line, the native engine, tokenizers, the downloader and the
+# converters need nothing. NumPy and PyTorch are only for the Python tensor layers and are opt-in extras.
+dependencies = []
+
+[project.optional-dependencies]
+numpy = ["numpy>=1.22.0"]
+torch = ["torch>=2.0.0", "numpy>=1.22.0"]
+all = ["torch>=2.0.0", "numpy>=1.22.0"]
+dev = ["pytest", "torch>=2.0.0", "numpy>=1.22.0"]
 
 [tool.setuptools.packages.find]
 where = ["python"]
 include = ["hk*"]
 
 [tool.setuptools.package-data]
-hk = ["*.dll", "*.so", "*.dylib", "py.typed"]
+hk = ["*.dll", "*.so", "*.dylib", "bin/*", "py.typed"]
 
 [project.scripts]
 hk = "hk.cli:main"

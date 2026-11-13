@@ -219,6 +219,29 @@ correctness validation
 
 ---
 
+## 1.6 Zero dependencies
+
+*Added 2026-10-21 at the owner's direction.*
+
+HK is a zero-dependency framework. That is a product promise, not a packaging detail:
+
+```text
+pip install hknt            installs hknt and nothing else
+the hk command             works the moment pip finishes: no download step, no toolchain
+import hk                   imports no other package (not NumPy, not PyTorch)
+the engine, converters, downloader, tokenizers, server, CLI
+                            never need Python packages at all
+```
+
+PyTorch and NumPy may exist only as **optional bridges** (`pip install hknt[torch]`) for people who already have them
+and want to hand tensors across. Nothing in HK's own path may import them, and a bridge must say what to install
+when it is used without its package. Each wheel carries the native library and the `hk` executable for its platform.
+The replacement for what PyTorch is used for today is HK's own tensor and autograd library (section 161).
+
+Test: a clean virtual environment holding only the wheel can run `hk`, import `hk`, and load and generate from a model.
+
+---
+
 # 2. Canonical Runtime Architecture
 
 Final runtime structure:
@@ -4201,6 +4224,7 @@ Once research features have sufficient validation, they can graduate.
 ## HK 2.1 — Hardware Acceleration
 
 ```text
+[x] zero-dependency Python package: no torch/numpy requirement, `hk` bundled in every wheel (section 1.6)
 [ ] CUDA Tensor Cores
 [ ] 2:4 sparse Tensor Cores
 [ ] ROCm/HIP
@@ -4258,6 +4282,7 @@ Once research features have sufficient validation, they can graduate.
 ## HK 2.5 — Training Platform
 
 ```text
+[ ] hk.tensor: HK's own tensor + autograd library (section 161), so training needs no PyTorch
 [ ] full training
 [ ] QLoRA
 [ ] LoRA
@@ -4375,6 +4400,8 @@ SERVER FEATURES
 ADVANCED QUANTIZATION
   ↓
 SPARSITY EXECUTION
+  ↓
+TENSOR + AUTOGRAD CORE (hk.tensor, section 161)
   ↓
 TRAINING
   ↓
@@ -4786,3 +4813,58 @@ It is:
 ```
 
 **That is the complete HK target.**
+
+
+---
+
+# 161. hk.tensor — HK's Own Tensor and Autograd Library
+
+*Added 2026-10-21 at the owner's direction.*
+
+HK's Python layer currently leans on PyTorch for everything that is not inference: `nn.Module` models, autograd, optimizers,
+dtype tables, tensor containers. That conflicts with section 1.6. The goal is **not** to clone PyTorch's whole surface; it is to
+own the part HK needs to train, grow, prune, quantize and evolve models, in Zig, with a thin Python layer over the C ABI.
+
+## Scope
+
+```text
+Tensor            shape, strides, views, broadcasting; dtypes f32 f16 bf16 f64 i8..i64 u8 bool,
+                  plus HK's quantized block formats as first-class storage (not only dequantized copies);
+                  storage is a malloc buffer, an mmap'd .hk range (zero-copy), or a device buffer
+Ops               the transformer set: matmul/GEMM, elementwise, reductions, softmax, layernorm/rmsnorm,
+                  RoPE, attention (flash-style), embedding, cross-entropy, sampling helpers
+Autograd          reverse-mode tape; backward for every op above; checkpointing; no_grad; detach
+Kernels           the same CPU (SIMD per ISA level), CUDA and Vulkan kernels the engine uses, extended with backward passes;
+                  quantized-weight matmul with gradients to the activations (QLoRA)
+Optimizers        SGD, Adam, AdamW, Adafactor, 8-bit and paged variants; schedulers (section 43)
+Modules           a small module system (Linear, Embedding, norms, attention, MLP, transformer block, LoRA) that maps 1:1 onto
+                  the architectures the engine runs
+I/O               load/save .hk directly; no intermediate framework tensors
+Bridges (optional) DLPack and the buffer protocol, so a torch or NumPy tensor can be wrapped without a copy when those are installed
+```
+
+## Rules
+
+- **Correct before fast.** Every op's backward is checked against finite differences (a `gradcheck`), and every op's forward against the
+  engine's existing kernels. Where PyTorch is installed (CI only, as an optional job) it is used as an independent reference, never as a dependency.
+- **One kernel stack.** Training kernels live beside the inference kernels (`src/kernels`, `src/cuda_device.zig`, `src/vk`), not in a second tree.
+- **Memory first** (section 1.2): activations are checkpointable, optimizer state is shardable and can be quantized, weights may stay mmap'd and quantized
+  while only adapters train.
+- **Python is thin.** `hk.tensor` is a ctypes layer over a C ABI for tensors and autograd; no NumPy-style hot loops in Python.
+- **Honest scope.** A feature is listed as supported only when it has a gradient check and a test; unsupported PyTorch features raise, they do not silently differ.
+
+## Delivery (inside milestone 2.5, in this order)
+
+```text
+1. Tensor core: dtypes, storage, views, broadcasting, CPU elementwise/reduction/matmul, mmap-backed .hk tensors
+2. Autograd tape + backward for the transformer op set on the CPU, with gradcheck; a tiny model trains end to end
+3. Optimizers and schedulers; LoRA/QLoRA on mmap'd quantized weights
+4. CUDA and Vulkan forward/backward kernels (shared with the inference kernels)
+5. Port python/hk modeling/trainer/adaptive/pruning off torch.nn onto hk.tensor; torch becomes an optional bridge only
+6. Distributed and mixed-precision training (sections 41-42)
+```
+
+## Success
+
+`pip install hknt` (no extras) can pretrain a small model, LoRA-fine-tune a quantized one, prune, grow and quantize it, and save
+a `.hk` file, with results within a stated tolerance of the same run in PyTorch and with a lower peak memory.

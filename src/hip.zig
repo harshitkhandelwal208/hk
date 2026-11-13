@@ -20,8 +20,8 @@ const Loader = @import("dynlib.zig").Loader;
 
 pub const enabled = build_options.rocm;
 
-/// Graph capture is not implemented for HIP; the engine launches every kernel directly.
-pub const graphs_supported = false;
+/// True when the HIP runtime supports stream graph capture.
+pub var graphs_supported: bool = false;
 
 pub const HipError = error{
     HipNotCompiledIn,
@@ -40,6 +40,8 @@ const HipModule = ?*anyopaque;
 const HipFunction = ?*anyopaque;
 const HipStream = ?*anyopaque;
 const HipEvent = ?*anyopaque;
+const HipGraph = ?*anyopaque;
+const HipGraphExec = ?*anyopaque;
 
 const Api = struct {
     hipInit: *const fn (flags: c_uint) callconv(.c) HipResult,
@@ -76,11 +78,22 @@ const Api = struct {
         params: ?[*]const ?*anyopaque,
         extra: ?[*]const ?*anyopaque,
     ) callconv(.c) HipResult,
+    // Graph capture API (optional, present in modern ROCm)
+    hipStreamBeginCapture: ?*const fn (stream: HipStream, mode: c_int) callconv(.c) HipResult = null,
+    hipStreamEndCapture: ?*const fn (stream: HipStream, graph: *HipGraph) callconv(.c) HipResult = null,
+    hipGraphInstantiate: ?*const fn (graphExec: *HipGraphExec, graph: HipGraph, pErrorNode: ?*anyopaque, pLogBuffer: ?[*]u8, bufferSize: usize) callconv(.c) HipResult = null,
+    hipGraphLaunch: ?*const fn (graphExec: HipGraphExec, stream: HipStream) callconv(.c) HipResult = null,
+    hipGraphDestroy: ?*const fn (graph: HipGraph) callconv(.c) HipResult = null,
+    hipGraphExecDestroy: ?*const fn (graphExec: HipGraphExec) callconv(.c) HipResult = null,
 };
 
-/// The AMD code object built by `build.zig` from `cuda_device.zig` for the generic gfx11 target (RDNA3 and newer
-/// share one binary; the runtime refuses it on a GPU of another family, which `init` reports as an unusable device).
-const DEVICE_CODE_OBJECT: []const u8 = if (enabled) @embedFile("rocm_device_co") else "";
+/// HSA code objects built by `build.zig` for AMD targets:
+/// - gfx10_3_generic: RDNA2 (RX 6000 series, Steam Deck)
+/// - gfx11_generic: RDNA3 / RDNA3.5 (RX 7000 series, 700M/800M iGPUs, WMMA matrix cores)
+/// - gfx12_generic: RDNA4 (WMMA matrix cores)
+const CODE_OBJECT_GFX11: []const u8 = if (enabled) @embedFile("rocm_device_co_gfx11") else "";
+const CODE_OBJECT_GFX10_3: []const u8 = if (enabled) @embedFile("rocm_device_co_gfx10_3") else "";
+const CODE_OBJECT_GFX12: []const u8 = if (enabled) @embedFile("rocm_device_co_gfx12") else "";
 
 const State = struct {
     lib: ?*anyopaque = null,
@@ -90,6 +103,8 @@ const State = struct {
     device: c_int = 0,
     module: HipModule = null,
     fns: std.StringHashMapUnmanaged(HipFunction) = .empty,
+    is_wmma: bool = false,
+    has_graphs: bool = false,
     /// Why the backend is not usable, for the planner's "rejected because" line.
     why_not: []const u8 = "",
 };
@@ -149,8 +164,20 @@ fn ensure() HipError!*State {
     var api: Api = undefined;
     const info = @typeInfo(Api).@"struct";
     inline for (info.field_names, info.field_types) |name, T| {
-        @field(api, name) = proc(T, handle, name) orelse return fail("ROCm: the HIP runtime is missing " ++ name, HipError.DriverNotLoaded);
+        if (@typeInfo(T) == .optional) {
+            @field(api, name) = proc(@typeInfo(T).optional.child, handle, name);
+        } else {
+            @field(api, name) = proc(T, handle, name) orelse return fail("ROCm: the HIP runtime is missing " ++ name, HipError.DriverNotLoaded);
+        }
     }
+    const has_graphs = api.hipStreamBeginCapture != null and
+        api.hipStreamEndCapture != null and
+        api.hipGraphInstantiate != null and
+        api.hipGraphLaunch != null and
+        api.hipGraphDestroy != null and
+        api.hipGraphExecDestroy != null;
+    graphs_supported = has_graphs;
+
     if (api.hipInit(0) != 0) return fail("ROCm: hipInit failed (is the amdgpu driver loaded and /dev/kfd readable? the user needs to be in the `render` group)", HipError.NoHipDevice);
     var count: c_int = 0;
     if (api.hipGetDeviceCount(&count) != 0 or count <= 0) return fail("ROCm: the HIP runtime sees no AMD GPU (for an unsupported RDNA3 iGPU, try HSA_OVERRIDE_GFX_VERSION=11.0.0)", HipError.NoHipDevice);
@@ -160,15 +187,52 @@ fn ensure() HipError!*State {
     if (dev < 0 or dev >= count) dev = 0;
     if (api.hipSetDevice(dev) != 0) return fail("ROCm: hipSetDevice failed", HipError.HipCallFailed);
 
+    var name_buf: [256]u8 = undefined;
+    const dev_name = if (api.hipDeviceGetName(&name_buf, @intCast(name_buf.len), dev) == 0)
+        std.mem.sliceTo(&name_buf, 0)
+    else
+        "";
+
+    const override_env = envvar.get("HSA_OVERRIDE_GFX_VERSION") orelse envvar.get("HK_ROCM_ARCH") orelse "";
+    const is_gfx10 = std.mem.indexOf(u8, dev_name, "gfx10") != null or std.mem.startsWith(u8, override_env, "10.");
+    const is_gfx12 = std.mem.indexOf(u8, dev_name, "gfx12") != null or std.mem.startsWith(u8, override_env, "12.");
+
     var module: HipModule = null;
-    if (api.hipModuleLoadData(&module, DEVICE_CODE_OBJECT.ptr) != 0 or module == null) {
-        return fail("ROCm: the GPU cannot run the bundled kernels (they target RDNA3 and newer, gfx11 and gfx12)", HipError.NoHipDevice);
+    var is_wmma = false;
+
+    const Candidate = struct { obj: []const u8, wmma: bool };
+    const candidates: [3]Candidate = if (is_gfx12) .{
+        .{ .obj = CODE_OBJECT_GFX12, .wmma = true },
+        .{ .obj = CODE_OBJECT_GFX11, .wmma = true },
+        .{ .obj = CODE_OBJECT_GFX10_3, .wmma = false },
+    } else if (is_gfx10) .{
+        .{ .obj = CODE_OBJECT_GFX10_3, .wmma = false },
+        .{ .obj = CODE_OBJECT_GFX11, .wmma = true },
+        .{ .obj = CODE_OBJECT_GFX12, .wmma = true },
+    } else .{
+        .{ .obj = CODE_OBJECT_GFX11, .wmma = true },
+        .{ .obj = CODE_OBJECT_GFX12, .wmma = true },
+        .{ .obj = CODE_OBJECT_GFX10_3, .wmma = false },
+    };
+
+    for (candidates) |c| {
+        if (c.obj.len == 0) continue;
+        if (api.hipModuleLoadData(&module, c.obj.ptr) == 0 and module != null) {
+            is_wmma = c.wmma;
+            break;
+        }
+    }
+
+    if (module == null) {
+        return fail("ROCm: the GPU cannot run the bundled kernels (bundled targets: gfx10_3, gfx11, gfx12)", HipError.NoHipDevice);
     }
 
     state.lib = handle;
     state.api = api;
     state.device = dev;
     state.module = module;
+    state.is_wmma = is_wmma;
+    state.has_graphs = has_graphs;
     state.ready = true;
     thread_bound = true;
     return &state;
@@ -268,25 +332,51 @@ pub const CudaEvent = struct {
     }
 };
 
-/// Graph capture is not implemented (see `graphs_supported`); these exist so the engine compiles against either runtime.
-pub const CudaGraphExec = struct {
-    pub fn launch(_: *const CudaGraphExec, _: ?CudaStream) !void {
-        return HipError.GraphsUnsupported;
+pub const CudaGraph = struct {
+    handle: HipGraph,
+
+    pub fn beginCapture(stream: CudaStream) !void {
+        const s = try ensure();
+        const f = s.api.hipStreamBeginCapture orelse return HipError.GraphsUnsupported;
+        if (f(stream.handle, 0) != 0) return HipError.HipCallFailed;
     }
-    pub fn destroy(_: *CudaGraphExec) void {}
+
+    pub fn endCapture(stream: CudaStream) !CudaGraph {
+        const s = try ensure();
+        const f = s.api.hipStreamEndCapture orelse return HipError.GraphsUnsupported;
+        var h: HipGraph = null;
+        if (f(stream.handle, &h) != 0 or h == null) return HipError.HipCallFailed;
+        return CudaGraph{ .handle = h };
+    }
+
+    pub fn instantiate(self: *const CudaGraph) !CudaGraphExec {
+        const s = try ensure();
+        const f = s.api.hipGraphInstantiate orelse return HipError.GraphsUnsupported;
+        var exec_h: HipGraphExec = null;
+        if (f(&exec_h, self.handle, null, null, 0) != 0 or exec_h == null) return HipError.HipCallFailed;
+        return CudaGraphExec{ .handle = exec_h };
+    }
+
+    pub fn destroy(self: *CudaGraph) void {
+        const s = ensure() catch return;
+        if (s.api.hipGraphDestroy) |f| _ = f(self.handle);
+    }
 };
 
-pub const CudaGraph = struct {
-    pub fn beginCapture(_: CudaStream) !void {
-        return HipError.GraphsUnsupported;
+pub const CudaGraphExec = struct {
+    handle: HipGraphExec,
+
+    pub fn launch(self: *const CudaGraphExec, stream: ?CudaStream) !void {
+        const s = try ensure();
+        const f = s.api.hipGraphLaunch orelse return HipError.GraphsUnsupported;
+        const s_handle = if (stream) |st| st.handle else null;
+        if (f(self.handle, s_handle) != 0) return HipError.HipCallFailed;
     }
-    pub fn endCapture(_: CudaStream) !CudaGraph {
-        return HipError.GraphsUnsupported;
+
+    pub fn destroy(self: *CudaGraphExec) void {
+        const s = ensure() catch return;
+        if (s.api.hipGraphExecDestroy) |f| _ = f(self.handle);
     }
-    pub fn instantiate(_: *const CudaGraph) !CudaGraphExec {
-        return HipError.GraphsUnsupported;
-    }
-    pub fn destroy(_: *CudaGraph) void {}
 };
 
 // -- device memory ---------------------------------------------------------------------------------------------------
@@ -364,12 +454,16 @@ pub fn gemmGrid(m: usize, n: usize) [2]u32 {
     return .{ @intCast((m + gemm_tile_rows - 1) / gemm_tile_rows), @intCast((n + gemm_tile_tokens - 1) / gemm_tile_tokens) };
 }
 
-/// No matrix-core kernels on AMD yet.
+/// True when running on an AMD GPU with hardware WMMA (RDNA3 gfx11 and RDNA4 gfx12).
 pub fn hasTensorCores() bool {
-    return false;
+    const s = ensure() catch return false;
+    return s.is_wmma;
 }
-pub fn tensorKernel(_: format.StorageType) ?Kernel {
-    return null;
+pub fn tensorKernel(fmt: format.StorageType) ?Kernel {
+    if (!hasTensorCores()) return null;
+    var name_buf: [48]u8 = undefined;
+    const name = std.fmt.bufPrint(&name_buf, "gemm_tc_{s}", .{@tagName(fmt)}) catch return null;
+    return deviceKernel(name) catch null;
 }
 pub fn immaKernel(_: format.StorageType) ?Kernel {
     return null;
@@ -472,3 +566,14 @@ pub const profiling = struct {
         try w.print("  total {d:.2} ms\n", .{total});
     }
 };
+
+test "hip: embedded HSA code objects for gfx10_3, gfx11 and gfx12 exist and are valid ELF binaries" {
+    if (!enabled) return error.SkipZigTest;
+    try std.testing.expect(CODE_OBJECT_GFX10_3.len > 0);
+    try std.testing.expect(CODE_OBJECT_GFX11.len > 0);
+    try std.testing.expect(CODE_OBJECT_GFX12.len > 0);
+    // Validate ELF magic: \x7fELF
+    try std.testing.expectEqualStrings("\x7fELF", CODE_OBJECT_GFX10_3[0..4]);
+    try std.testing.expectEqualStrings("\x7fELF", CODE_OBJECT_GFX11[0..4]);
+    try std.testing.expectEqualStrings("\x7fELF", CODE_OBJECT_GFX12[0..4]);
+}

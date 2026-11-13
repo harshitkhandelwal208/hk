@@ -87,24 +87,58 @@ pub fn build(b: *std.Build) void {
 
     if (rocm_enabled) {
         if (needsLibDl(target.result)) hk_mod.linkSystemLibrary("dl", .{});
-        // The same device code (src/cuda_device.zig) compiled for AMD: one HSA code object for the generic gfx11 target,
-        // which covers RDNA3 (gfx1100 to gfx1103) and RDNA3.5. The wave32 kernels also suit RDNA1/2 and RDNA4, which would
-        // each need their own object (gfx10_3_generic, gfx12_generic); none is built or tested yet.
-        const amd_target = b.resolveTargetQuery(.{
+        // HSA code objects for AMD targets:
+        // - gfx10_3_generic: RDNA2 (RX 6000 series, Steam Deck, gfx1030-gfx1036)
+        // - gfx11_generic: RDNA3 / RDNA3.5 with WMMA matrix cores (RX 7000 series, 700M/800M iGPUs, gfx1100-gfx1153)
+        // - gfx12_generic: RDNA4 with WMMA matrix cores (gfx1200, gfx1201)
+        const amd_target_11 = b.resolveTargetQuery(.{
             .cpu_arch = .amdgcn,
             .os_tag = .amdhsa,
             .cpu_model = .{ .explicit = &std.Target.amdgcn.cpu.gfx11_generic },
         });
-        const amd_lib = b.addLibrary(.{
+        const amd_lib_11 = b.addLibrary(.{
             .linkage = .dynamic,
-            .name = "hk_rocm_device",
+            .name = "hk_rocm_device_gfx11",
             .root_module = b.createModule(.{
                 .root_source_file = b.path("src/cuda_device.zig"),
-                .target = amd_target,
+                .target = amd_target_11,
                 .optimize = .ReleaseFast,
             }),
         });
-        hk_mod.addAnonymousImport("rocm_device_co", .{ .root_source_file = amd_lib.getEmittedBin() });
+        hk_mod.addAnonymousImport("rocm_device_co", .{ .root_source_file = amd_lib_11.getEmittedBin() });
+        hk_mod.addAnonymousImport("rocm_device_co_gfx11", .{ .root_source_file = amd_lib_11.getEmittedBin() });
+
+        const amd_target_10_3 = b.resolveTargetQuery(.{
+            .cpu_arch = .amdgcn,
+            .os_tag = .amdhsa,
+            .cpu_model = .{ .explicit = &std.Target.amdgcn.cpu.gfx10_3_generic },
+        });
+        const amd_lib_10_3 = b.addLibrary(.{
+            .linkage = .dynamic,
+            .name = "hk_rocm_device_gfx10_3",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/cuda_device.zig"),
+                .target = amd_target_10_3,
+                .optimize = .ReleaseFast,
+            }),
+        });
+        hk_mod.addAnonymousImport("rocm_device_co_gfx10_3", .{ .root_source_file = amd_lib_10_3.getEmittedBin() });
+
+        const amd_target_12 = b.resolveTargetQuery(.{
+            .cpu_arch = .amdgcn,
+            .os_tag = .amdhsa,
+            .cpu_model = .{ .explicit = &std.Target.amdgcn.cpu.gfx12_generic },
+        });
+        const amd_lib_12 = b.addLibrary(.{
+            .linkage = .dynamic,
+            .name = "hk_rocm_device_gfx12",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/cuda_device.zig"),
+                .target = amd_target_12,
+                .optimize = .ReleaseFast,
+            }),
+        });
+        hk_mod.addAnonymousImport("rocm_device_co_gfx12", .{ .root_source_file = amd_lib_12.getEmittedBin() });
     }
 
     // Shared Library (DLL / .so / .dylib) for C ABI bindings (Python ctypes, C#, etc.)

@@ -6,13 +6,17 @@ Allows inspecting 70B parameter model metadata and downloading individual layers
 without downloading full multi-gigabyte weight containers.
 """
 
+
+from __future__ import annotations
 from typing import Dict, Any, List, Optional, Tuple, Union
 from pathlib import Path
 import json
 import struct
 import urllib.request
 import urllib.error
-import numpy as np
+from ._lazy import lazy
+
+np = lazy("numpy")
 
 from .format import (
     MAGIC,

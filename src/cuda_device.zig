@@ -260,11 +260,11 @@ inline fn gemmTile(comptime t: format.StorageType, w: [*]const u8, x: [*]const f
     if (row0 + r < m and tok0 + tk < n) y[@as(usize, tok0 + tk) * m + row0 + r] = acc;
 }
 
-// -- tensor core matrix product (sm_80 and newer) --------------------------------------------------------------------
+// -- tensor core matrix product (sm_80 and newer on NVIDIA, RDNA3/4 WMMA on AMD) -----------------------------------
 
-/// `mma.sync.m16n8k16` with f16 operands needs sm_80; the sm_70 module has no such kernels and the host falls back to
-/// the tiled kernel above.
-pub const has_tensor_cores = builtin.cpu.arch == .nvptx64 and builtin.cpu.has(.nvptx, .sm_80);
+/// `mma.sync.m16n8k16` with f16 operands needs sm_80; AMD RDNA3 (gfx11) and RDNA4 (gfx12) use WMMA (`v_wmma_f32_16x16x16_f16`).
+/// Architectures without matrix cores fall back to the portable tiled kernel.
+pub const has_tensor_cores = (builtin.cpu.arch == .nvptx64 and builtin.cpu.has(.nvptx, .sm_80)) or gpu.has_wmma;
 
 /// Output rows and tokens of one block of the tensor core kernel, and the weights per row decoded to f16 in one round.
 const tc_rows = 64;
@@ -474,10 +474,164 @@ inline fn gemmTensor(comptime t: format.StorageType, w: [*]const u8, x: [*]const
     };
 }
 
+/// Matrix product for AMD RDNA3 (gfx11) and RDNA4 (gfx12) using Wave Matrix Multiply-Accumulate (WMMA).
+/// Operates on 16x16x16 tiles in Wave32 mode using `v_wmma_f32_16x16x16_f16`.
+inline fn gemmWmma(comptime t: format.StorageType, w: [*]const u8, x: [*]const f16, y: [*]f32, k: u32, m: u32, n: u32) void {
+    const info = comptime blocks.info(t).?;
+    const unit = comptime if (info.elems < 32) 32 else info.elems;
+    const unit_bytes = comptime unit / info.elems * info.bytes;
+    const units_per_row = comptime tc_round / unit;
+    const row0 = bid() * tc_rows;
+    const tok0 = bidY() * tc_tokens;
+    const row_stride: usize = (@as(usize, k) / info.elems) * info.bytes;
+    const warp = tid() >> 5;
+    const lane = tid() & 31;
+    const wr = (warp % 4) * 16;
+    const wc = (warp / 4) * 16;
+    const r_lane = lane % 16;
+
+    var acc: [4][8]f32 = undefined;
+    for (&acc) |*a| a.* = .{ 0, 0, 0, 0, 0, 0, 0, 0 };
+
+    var k0: u32 = 0;
+    while (k0 < k) : (k0 += tc_round) {
+        const len = @min(@as(u32, tc_round), k - k0);
+
+        if (comptime t == .f16 or t == .bf16 or t == .f32) {
+            const bytes_per: usize = comptime if (t == .f32) 4 else 2;
+            var vi: u32 = tid();
+            while (vi < tc_rows * (tc_round / 8)) : (vi += tc_threads) {
+                const rr = vi / (tc_round / 8);
+                const c8: u32 = (vi % (tc_round / 8)) * 8;
+                var out: @Vector(4, u32) = .{ 0, 0, 0, 0 };
+                if (row0 + rr < m and c8 < len) {
+                    const src = w + @as(usize, row0 + rr) * row_stride + @as(usize, k0 + c8) * bytes_per;
+                    if (comptime t == .f16) {
+                        const v: *align(2) const @Vector(4, u32) = @ptrCast(@alignCast(src));
+                        out = v.*;
+                    } else if (comptime t == .bf16) {
+                        const v: *align(2) const @Vector(4, u32) = @ptrCast(@alignCast(src));
+                        const raw = v.*;
+                        inline for (0..4) |i| {
+                            const lo: f32 = @bitCast(raw[i] << 16);
+                            const hi: f32 = @bitCast(raw[i] & 0xffff0000);
+                            out[i] = packHalves(lo, hi);
+                        }
+                    } else {
+                        const v: *align(4) const [2]@Vector(4, u32) = @ptrCast(@alignCast(src));
+                        inline for (0..2) |h| {
+                            inline for (0..2) |i| {
+                                const lo: f32 = @bitCast(v[h][2 * i]);
+                                const hi: f32 = @bitCast(v[h][2 * i + 1]);
+                                out[2 * h + i] = packHalves(lo, hi);
+                            }
+                        }
+                    }
+                }
+                const dst: *addrspace(.shared) align(4) @Vector(4, u32) = @ptrCast(wordsOf(&tc_a) + (rr * tc_a_ld + c8) / 2);
+                dst.* = out;
+            }
+        } else {
+            var idx: u32 = tid();
+            while (idx < tc_rows * units_per_row) : (idx += tc_threads) {
+                const rr = idx / units_per_row;
+                const off: u32 = (idx % units_per_row) * unit;
+                var tmp: [unit]f32 = undefined;
+                if (row0 + rr < m and off < len) {
+                    const src = w + @as(usize, row0 + rr) * row_stride + (@as(usize, k0 + off) / info.elems) * info.bytes;
+                    decodeUnit(t, unit, src[0..unit_bytes], &tmp);
+                } else {
+                    for (&tmp) |*v| v.* = 0;
+                }
+                const words = wordsOf(&tc_a) + (rr * tc_a_ld + off) / 2;
+                var e: usize = 0;
+                while (e < unit) : (e += 2) words[e / 2] = packHalves(tmp[e], tmp[e + 1]);
+            }
+        }
+
+        const tc_vecs = tc_tokens * (tc_step / 8) / tc_threads;
+        const stage = struct {
+            inline fn fetch(xp: [*]const f16, tok0_: u32, n_: u32, k_: u32, k0_: u32, step_: u32, len_: u32, out: *[tc_vecs]@Vector(4, u32)) void {
+                inline for (0..tc_vecs) |u| {
+                    const p: u32 = tid() + @as(u32, u) * tc_threads;
+                    const tok_ = tok0_ + p / (tc_step / 8);
+                    const kq_: u32 = (p % (tc_step / 8)) * 8;
+                    out[u] = .{ 0, 0, 0, 0 };
+                    if (tok_ < n_ and step_ + kq_ < len_) {
+                        const src: *align(2) const @Vector(4, u32) = @ptrCast(xp + @as(usize, tok_) * k_ + k0_ + step_ + kq_);
+                        out[u] = src.*;
+                    }
+                }
+            }
+            inline fn park(out: *const [tc_vecs]@Vector(4, u32)) void {
+                inline for (0..tc_vecs) |u| {
+                    const p: u32 = tid() + @as(u32, u) * tc_threads;
+                    const tt_ = p / (tc_step / 8);
+                    const kq_: u32 = (p % (tc_step / 8)) * 8;
+                    const dst: *addrspace(.shared) align(4) @Vector(4, u32) = @ptrCast(wordsOf(&tc_b) + (tt_ * tc_b_ld + kq_) / 2);
+                    dst.* = out[u];
+                }
+            }
+        };
+        var v: [tc_vecs]@Vector(4, u32) = undefined;
+        stage.fetch(x, tok0, n, k, k0, 0, len, &v);
+        stage.park(&v);
+        barSync();
+
+        var step: u32 = 0;
+        while (step < len) : (step += tc_step) {
+            const more = step + tc_step < len;
+            if (more) stage.fetch(x, tok0, n, k, k0, step + tc_step, len, &v);
+
+            comptime var half_k = 0;
+            inline while (half_k < tc_step) : (half_k += 16) {
+                const row_idx = wr + r_lane;
+                const a_words = wordsOf(&tc_a) + (row_idx * tc_a_ld + step + half_k) / 2;
+                var a_frag: [16]f16 = undefined;
+                inline for (0..8) |widx| {
+                    const aw = a_words[widx];
+                    a_frag[2 * widx] = @bitCast(@as(u16, @truncate(aw)));
+                    a_frag[2 * widx + 1] = @bitCast(@as(u16, @truncate(aw >> 16)));
+                }
+
+                inline for (0..4) |ni| {
+                    const col_idx = wc + ni * 32 + r_lane;
+                    const b_words = wordsOf(&tc_b) + (col_idx * tc_b_ld + half_k) / 2;
+                    var b_frag: [16]f16 = undefined;
+                    inline for (0..8) |widx| {
+                        const bw = b_words[widx];
+                        b_frag[2 * widx] = @bitCast(@as(u16, @truncate(bw)));
+                        b_frag[2 * widx + 1] = @bitCast(@as(u16, @truncate(bw >> 16)));
+                    }
+                    acc[ni] = gpu.wmmaF32(a_frag, b_frag, acc[ni], lane);
+                }
+            }
+            barSync();
+            if (more) stage.park(&v);
+            barSync();
+        }
+    }
+
+    const my_r = row0 + wr + r_lane;
+    if (my_r < m) {
+        inline for (0..4) |ni| {
+            const col_base = tok0 + wc + ni * 32 + (if (lane < 16) @as(u32, 0) else 8);
+            inline for (0..8) |i| {
+                const c = col_base + i;
+                if (c < n) y[@as(usize, c) * m + my_r] = acc[ni][i];
+            }
+        }
+    }
+}
+
 fn GemmTensorKernel(comptime t: format.StorageType) type {
     return struct {
         fn run(w: [*]const u8, x: [*]const f16, y: [*]f32, k: u32, m: u32, n: u32) callconv(.kernel) void {
-            gemmTensor(t, w, x, y, k, m, n);
+            if (comptime gpu.has_wmma) {
+                gemmWmma(t, w, x, y, k, m, n);
+            } else if (comptime builtin.cpu.arch == .nvptx64) {
+                gemmTensor(t, w, x, y, k, m, n);
+            }
         }
     };
 }
@@ -977,7 +1131,7 @@ fn GemmImmaKernel(comptime t: format.StorageType) type {
 
 comptime {
     @export(&quantizeActKernel, .{ .name = "quantize_act" });
-    if (has_tensor_cores) {
+    if (has_tensor_cores and builtin.cpu.arch == .nvptx64) {
         for (imma_formats) |t| @export(&GemmImmaKernel(t).run, .{ .name = "gemm_imma_" ++ @tagName(t) });
     }
     for (imma_formats) |t| @export(&GemvDp4aKernel(t).run, .{ .name = "gemv_dp4a_" ++ @tagName(t) });
@@ -1219,7 +1373,7 @@ fn FlashKernel(comptime hd: u32) type {
 }
 
 comptime {
-    if (has_tensor_cores) {
+    if (has_tensor_cores and builtin.cpu.arch == .nvptx64) {
         @export(&FlashKernel(64).run, .{ .name = "attention_tc_64" });
         @export(&FlashKernel(128).run, .{ .name = "attention_tc_128" });
     }

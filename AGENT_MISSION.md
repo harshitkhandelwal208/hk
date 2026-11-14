@@ -40,3 +40,5 @@ You MUST strictly adhere to the guidelines set forth in:
    - Run `zig build test` (must pass 197+ tests, 0 unexpected failures).
    - Test various CPU levels: `-Dcpu=x86_64_v3`, `-Dcpu=x86_64`.
    - Update `docs/plan/HANDOFF.md` and `docs/plan/STATUS.md` at each step.
+4. **Commit & Push Passing Increments**:
+   - Create clean git commits for each completed milestone increment, and push all commits to GitHub: `git push origin feat/hk-2.1-rocm`.
